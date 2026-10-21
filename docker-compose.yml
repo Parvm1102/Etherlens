@@ -1,0 +1,35 @@
+services:
+  dev:
+    build:
+      context: .
+      network: host
+    image: etherlens-dev
+    working_dir: /work
+    env_file: .env
+    volumes:
+      - .:/work
+      - etherlens-data:/work/data
+      - gcloud-config:/root/.config/gcloud
+      - ssh-keys:/root/.ssh
+    ports: ["4040:4040"]
+
+  chain:
+    image: etherlens-dev
+    command: anvil --host 0.0.0.0 --port 8545
+    ports: ["8545:8545"]
+
+  dashboard:
+    image: etherlens-dev
+    working_dir: /work
+    env_file: .env
+    command: streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port 8501
+    volumes:
+      - .:/work
+      - etherlens-data:/work/data
+      - gcloud-config:/root/.config/gcloud
+    ports: ["8501:8501"]
+
+volumes:
+  etherlens-data: {}
+  gcloud-config: {}
+  ssh-keys: {}

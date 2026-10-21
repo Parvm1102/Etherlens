@@ -1,0 +1,12 @@
+data/
+results/
+logs/
+contracts/out/
+contracts/cache/
+.env
+.git/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+dist/
