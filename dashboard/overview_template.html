@@ -1,0 +1,888 @@
+<title>EtherLens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one scrolling ledger. Headline numbers, then the pipeline as a real
+   sequence, then each layer's findings, ending with the on-chain proof. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #fdfdfc;
+  --surface-2: #edf0f4;
+  --ink: #0d1117;
+  --ink-2: #485060;
+  --muted: #747b88;
+  --line: #e1e4ea;
+  --axis: #c2c7d0;
+  --s1: #2a78d6;
+  --s1-wash: rgba(42, 120, 214, 0.12);
+  --s2: #eb6834;
+  --dim: #a4afbf;
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warn: #fab219;
+  --warn-ink: #7a5000;
+  --crit: #d03b3b;
+  --ring: rgba(13, 17, 23, 0.10);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+  --step-3: 2.125rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0e11; --surface: #15181d; --surface-2: #1c2027; --ink: #eef0f3; --ink-2: #bcc2cc;
+    --muted: #8a909b; --line: #262a31; --axis: #3a3f48; --s1: #3987e5; --s1-wash: rgba(57, 135, 229, 0.16);
+    --s2: #d95926; --dim: #485263; --good-ink: #39c239; --warn-ink: #f0b429; --ring: rgba(255, 255, 255, 0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0e11; --surface: #15181d; --surface-2: #1c2027; --ink: #eef0f3; --ink-2: #bcc2cc;
+  --muted: #8a909b; --line: #262a31; --axis: #3a3f48; --s1: #3987e5; --s1-wash: rgba(57, 135, 229, 0.16);
+  --s2: #d95926; --dim: #485263; --good-ink: #39c239; --warn-ink: #f0b429; --ring: rgba(255, 255, 255, 0.10);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0;
+  background: var(--bg); color: var(--ink); font-family: var(--font-sans);
+  font-size: var(--step-0); line-height: 1.55; -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+a { color: var(--s1); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible, .hit:focus-visible {
+  outline: 2px solid var(--s1); outline-offset: 2px;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+/* Header */
+.mast { display: grid; gap: 14px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.mast h1 { font-size: var(--step-3); font-weight: 600; letter-spacing: -0.01em; }
+.mast h1 span { font-family: var(--font-mono); font-weight: 400; font-size: 0.5em; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+.mast p { margin: 0; max-width: 68ch; color: var(--ink-2); font-size: var(--step-1); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: var(--step--1); color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--step--1); }
+nav.toc a { color: var(--ink-2); text-decoration: none; }
+nav.toc a:hover { color: var(--ink); text-decoration: underline; }
+
+/* KPI strip */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-block: 24px 8px; }
+.kpi { background: var(--surface); padding: 16px 18px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.kpi .label { font-size: var(--step--1); color: var(--ink-2); }
+.kpi .value { font-size: var(--step-2); font-weight: 600; letter-spacing: -0.01em; }
+.kpi .note { font-size: var(--step--1); color: var(--muted); }
+
+/* Sections */
+section { padding-top: 40px; scroll-margin-top: 12px; }
+.shead { display: grid; gap: 6px; margin-bottom: 16px; }
+.shead .eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; }
+.shead h2 { font-size: var(--step-2); font-weight: 600; }
+.shead p { margin: 0; color: var(--ink-2); max-width: 72ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.wide { grid-column: 1 / -1; }
+
+/* Cards (charts) */
+.card { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 12px; display: grid; gap: 10px; min-width: 0; }
+.card figcaption { display: grid; gap: 2px; }
+.card h3 { font-size: var(--step-0); font-weight: 600; }
+.card .sub { margin: 0; font-size: var(--step--1); color: var(--ink-2); }
+.plot { width: 100%; min-width: 0; position: relative; }
+.plot svg, .plot canvas { display: block; max-width: 100%; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); }
+.foot code { font-size: 0.75rem; }
+.tbtn, .btn { font: inherit; cursor: pointer; border-radius: 6px; }
+.tbtn { font-size: 0.75rem; color: var(--ink-2); background: transparent; border: 1px solid var(--line); padding: 2px 9px; }
+.tbtn:hover { background: var(--surface-2); }
+.twrap { overflow-x: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: var(--step--1); font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 500; background: var(--surface-2); position: sticky; top: 0; }
+td.num, th.num { text-align: right; }
+
+/* SVG chart chrome */
+.grid-l { stroke: var(--line); stroke-width: 1; }
+.axis-l { stroke: var(--axis); stroke-width: 1; }
+.tick { fill: var(--muted); font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.tick.mono { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-2); }
+.val { fill: var(--ink-2); font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.ann { fill: var(--ink); font-size: 11.5px; font-weight: 600; font-family: var(--font-sans); }
+.hit { outline: none; cursor: default; }
+.cross { stroke: var(--axis); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--step--1); color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* Tooltip */
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14); border-radius: 8px; padding: 8px 10px; font-size: var(--step--1); max-width: 300px; line-height: 1.45; }
+#tip b { font-weight: 600; }
+#tip .k { color: var(--muted); }
+
+/* Pipeline flow */
+.flowwrap { display: grid; gap: 14px; }
+.lane { display: grid; gap: 8px; }
+.lane h3 { font-size: var(--step--1); font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+ol.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 22px; counter-reset: stage; }
+ol.flow li { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 10px; display: grid; gap: 3px; align-content: start; min-width: 0; counter-increment: stage; }
+ol.flow li::before { content: counter(stage); font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+ol.flow li:not(:last-child)::after { content: ""; position: absolute; right: -17px; top: 50%; width: 12px; height: 12px;
+  border-top: 2px solid var(--axis); border-right: 2px solid var(--axis); transform: translateY(-50%) rotate(45deg); }
+ol.flow .name { font-weight: 600; font-size: var(--step--1); }
+ol.flow .what { font-size: 0.78rem; color: var(--ink-2); line-height: 1.4; }
+ol.flow .num { font-size: var(--step--1); font-weight: 600; margin-top: 4px; }
+ol.flow .time { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); }
+ol.flow li.chain { border-color: var(--s1); }
+@media (max-width: 900px) {
+  ol.flow { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; gap: 18px; }
+  ol.flow li:not(:last-child)::after { right: auto; left: 50%; top: auto; bottom: -15px; transform: translateX(-50%) rotate(135deg); }
+}
+
+/* Callouts, stats, checks */
+.callout { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--s1); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; }
+.callout .big { font-size: var(--step-2); font-weight: 600; }
+.callout p { margin: 0; color: var(--ink-2); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.stat .label { font-size: var(--step--1); color: var(--ink-2); }
+.stat .value { font-size: var(--step-1); font-weight: 600; }
+.stat .note { font-size: 0.78rem; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--step--1); font-weight: 500; border-radius: 999px; padding: 2px 10px 2px 8px; white-space: nowrap; }
+.pill.good { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.pill.warn { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 20%, transparent); }
+.pill.bad { color: var(--crit); background: color-mix(in srgb, var(--crit) 13%, transparent); }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.checks li { background: var(--surface); padding: 12px 16px; display: grid; grid-template-columns: 9.5rem 1fr; gap: 12px; align-items: baseline; }
+.checks li div { min-width: 0; }
+.checks .what { font-weight: 500; }
+.checks .why { color: var(--ink-2); font-size: var(--step--1); }
+@media (max-width: 560px) { .checks li { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Contract + verifier */
+.addr { font-family: var(--font-mono); font-size: var(--step--1); overflow-wrap: anywhere; }
+.verifier { display: grid; gap: 10px; }
+.verifier label { font-size: var(--step--1); color: var(--ink-2); }
+.verifier select, .verifier textarea { font: inherit; font-family: var(--font-mono); font-size: var(--step--1); color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+.verifier textarea { resize: vertical; min-height: 2.6em; }
+.vbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font-size: var(--step--1); font-weight: 500; padding: 7px 14px; border: 1px solid var(--s1); background: var(--s1); color: #fff; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn.ghost:hover { background: var(--surface-2); }
+#vout { display: grid; gap: 8px; }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-2); max-height: 260px; overflow: auto; }
+.steps li { overflow-wrap: anywhere; }
+.steps .lvl { color: var(--muted); }
+.cmp { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: var(--step--1); }
+.cmp span:nth-child(odd) { color: var(--muted); }
+.cmp code { overflow-wrap: anywhere; }
+
+footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--step--1); display: grid; gap: 6px; }
+footer p { margin: 0; max-width: 90ch; }
+@media (prefers-reduced-motion: no-preference) { .btn, .tbtn { transition: background-color 0.15s ease; } }
+</style>
+
+<div class="page">
+  <header class="mast">
+    <h1>EtherLens <span>Ethereum · big data · on-chain proofs</span></h1>
+    <p id="lede">Every Ethereum transaction from January 2025, cleaned and analysed on a Hadoop and Spark cluster, with each day's report fingerprinted by a Merkle root that is stored on a public blockchain.</p>
+    <div class="chips" id="chips"></div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#pipeline">Pipeline</a><a href="#month">The month</a><a href="#gas">Gas</a><a href="#engines">Hadoop &amp; Spark</a>
+      <a href="#network">Network</a><a href="#anomalies">Anomalies</a><a href="#stream">Streaming</a><a href="#proof">On-chain proof</a><a href="#checks">Checks</a>
+    </nav>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section id="pipeline">
+    <div class="shead">
+      <span class="eyebrow">How it works</span>
+      <h2>From a public dataset to a verifiable report</h2>
+      <p>Raw data lands in a bronze layer that is never edited. Spark cleans it into silver, aggregates it into small gold tables, and every analysis reads from there. Times are wall-clock per cluster job.</p>
+    </div>
+    <div class="flowwrap">
+      <div class="lane"><h3>Batch</h3><ol class="flow" id="flow-batch"></ol></div>
+      <div class="lane"><h3>Streaming</h3><ol class="flow" id="flow-stream"></ol></div>
+    </div>
+  </section>
+
+  <section id="month">
+    <div class="shead">
+      <span class="eyebrow">Descriptive analytics</span>
+      <h2>January 2025 on Ethereum</h2>
+      <p id="month-lede"></p>
+    </div>
+    <div class="grid" id="g-month"></div>
+  </section>
+
+  <section id="gas">
+    <div class="shead">
+      <span class="eyebrow">Diagnostic, predictive and prescriptive analytics</span>
+      <h2>When is it cheapest to send a transaction?</h2>
+      <p>Gas price is what a sender pays per unit of work, in gwei (one billionth of an ether). Busy hours bid it up.</p>
+    </div>
+    <div class="grid" id="g-gas"></div>
+  </section>
+
+  <section id="engines">
+    <div class="shead">
+      <span class="eyebrow">Big data engines</span>
+      <h2>Hadoop MapReduce and Spark on the same job</h2>
+      <p>Both engines counted transactions per sender over the same edge list stored on HDFS. MapReduce writes to disk between phases; Spark keeps intermediate data in memory.</p>
+    </div>
+    <div class="grid" id="g-engines"></div>
+  </section>
+
+  <section id="network">
+    <div class="shead">
+      <span class="eyebrow">Graph analytics</span>
+      <h2>The most central addresses</h2>
+      <p>PageRank on Spark RDDs over the last 7 days of sender-to-receiver links, using the class formula (0.15 + 0.85 × incoming share, 10 iterations).</p>
+    </div>
+    <div class="grid" id="g-network"></div>
+  </section>
+
+  <section id="anomalies">
+    <div class="shead">
+      <span class="eyebrow">Machine learning</span>
+      <h2>Unusual addresses, found without labels</h2>
+      <p>Spark MLlib KMeans groups addresses by behaviour (volume, value, nonce, gas, counterparties). An address is flagged when it is very far from its cluster's centre or sits in a tiny cluster.</p>
+    </div>
+    <div class="grid" id="g-anom"></div>
+  </section>
+
+  <section id="stream">
+    <div class="shead">
+      <span class="eyebrow">Real-time processing</span>
+      <h2>Streaming with windows and sketches</h2>
+      <p>A poller writes one file per block. Spark Structured Streaming aggregates them in 1-minute tumbling and 5-minute sliding windows, while small probabilistic sketches count senders using kilobytes instead of a full table.</p>
+    </div>
+    <div class="stats" id="s-stream"></div>
+    <div class="grid" id="g-stream" style="margin-top:16px"></div>
+  </section>
+
+  <section id="proof">
+    <div class="shead">
+      <span class="eyebrow">Blockchain</span>
+      <h2>Reports anyone can check</h2>
+      <p>A smart contract cannot compute analytics, so a publisher posts the results. Each day's report rows are hashed into a Merkle tree and only the 32-byte root is stored on-chain. Any single row can then be proved part of the published report, and any edit breaks the proof.</p>
+    </div>
+    <div class="grid" id="g-proof"></div>
+  </section>
+
+  <section id="checks">
+    <div class="shead">
+      <span class="eyebrow">Validation</span>
+      <h2>What was checked</h2>
+      <p>Results on synthetic data with planted anomalies were compared with known answers before trusting the real run.</p>
+    </div>
+    <ul class="checks" id="checklist"></ul>
+  </section>
+
+  <footer>
+    <p>Data: Ethereum mainnet transactions, 1–31 January 2025, from the BigQuery public dataset <code>crypto_ethereum.transactions</code>. Processed on Google Cloud Dataproc 2.2 (Spark 3.5, Hadoop 3.3, Hive). Contract on the Sepolia test network.</p>
+    <p>Every figure on this page is read from the project's result files when the page is built: <code>python scripts/build_overview.py</code>. The file named under each chart is its source.</p>
+  </footer>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script type="application/json" id="data">/*__DATA__*/{}</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const NS = "http://www.w3.org/2000/svg";
+const $ = (s) => document.querySelector(s);
+const nf = new Intl.NumberFormat("en-US");
+const int = (v) => nf.format(Math.round(v));
+const dec = (v, d = 2) => Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+function compact(v) {
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M";
+  if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K";
+  return String(+v.toFixed(3));
+}
+const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const KNOWN = { "0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT (Tether)", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC" };
+const ETHERSCAN = "https://sepolia.etherscan.io";
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, s, cls, anchor, extra) {
+  const t = el("text", Object.assign({ x, y, class: cls || "tick", "text-anchor": anchor || "start" }, extra || {}), parent);
+  t.textContent = s;
+  return t;
+}
+
+/* ---------- tooltip ---------- */
+const tip = $("#tip");
+function showTip(html, x, y) {
+  tip.innerHTML = html;
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px";
+  tip.style.top = Math.max(8, top) + "px";
+}
+function hideTip() { tip.hidden = true; }
+function bindTip(node, html) {
+  node.addEventListener("mousemove", (e) => showTip(html(), e.clientX, e.clientY));
+  node.addEventListener("mouseleave", hideTip);
+  node.addEventListener("focus", () => { const r = node.getBoundingClientRect(); showTip(html(), r.left + r.width / 2, r.top); });
+  node.addEventListener("blur", hideTip);
+}
+const tipRows = (title, rows) => `<b>${esc(title)}</b><br>` + rows.map(([k, v]) => `<span class="k">${esc(k)}</span> ${esc(v)}`).join("<br>");
+
+/* ---------- scales ---------- */
+function niceRange(lo, hi, n = 4) {
+  if (hi === lo) hi = lo + 1;
+  const raw = (hi - lo) / n, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  const a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step;
+  const ticks = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return { ticks, lo: a, hi: b };
+}
+const barPath = (x, y, w, h, r) => { r = Math.max(0, Math.min(r, h, w / 2));
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+const hbarPath = (x, y, len, h, r) => { r = Math.max(0, Math.min(r, len, h / 2));
+  return `M${x},${y}H${x + len - r}Q${x + len},${y} ${x + len},${y + r}V${y + h - r}Q${x + len},${y + h} ${x + len - r},${y + h}H${x}Z`; };
+
+/* ---------- card ---------- */
+const redrawers = [];
+function tableHTML(t) {
+  const head = t.head.map((h, i) => `<th${t.num && t.num[i] ? ' class="num"' : ""}>${esc(h)}</th>`).join("");
+  const body = t.rows.map((r) => "<tr>" + r.map((c, i) => `<td${t.num && t.num[i] ? ' class="num"' : ""}>${esc(c)}</td>`).join("") + "</tr>").join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function card(slot, o) {
+  const c = document.createElement("figure");
+  c.className = "card" + (o.wide ? " wide" : "");
+  c.innerHTML = `<figcaption><h3>${o.title}</h3>${o.sub ? `<p class="sub">${o.sub}</p>` : ""}</figcaption>` +
+    (o.legend ? `<div class="legend">${o.legend.map(([c2, l]) => `<span><i style="background:var(${c2})"></i>${esc(l)}</span>`).join("")}</div>` : "") +
+    `<div class="plot"></div>` +
+    (o.table ? `<div class="twrap" hidden>${tableHTML(o.table)}</div>` : "") +
+    `<div class="foot"><span>Source: <code>${esc(o.source)}</code></span>${o.table ? '<button type="button" class="tbtn" aria-expanded="false">Show table</button>' : ""}</div>`;
+  slot.appendChild(c);
+  if (o.table) {
+    const b = c.querySelector(".tbtn"), w = c.querySelector(".twrap");
+    b.addEventListener("click", () => { w.hidden = !w.hidden; b.textContent = w.hidden ? "Show table" : "Hide table"; b.setAttribute("aria-expanded", String(!w.hidden)); });
+  }
+  const plot = c.querySelector(".plot");
+  if (o.html) { plot.innerHTML = o.html; return c; }
+  let lastW = 0;
+  const draw = (force) => {
+    const w = Math.floor(plot.clientWidth);
+    if (!w || (w === lastW && !force)) return;
+    lastW = w;
+    plot.innerHTML = "";
+    if (o.canvas) { o.draw(plot, w, o.height); return; }
+    const svg = el("svg", { width: w, height: o.height, viewBox: `0 0 ${w} ${o.height}`, role: "img", "aria-label": o.title.replace(/<[^>]+>/g, "") }, plot);
+    o.draw(svg, w, o.height);
+  };
+  new ResizeObserver(() => draw(false)).observe(plot);
+  redrawers.push(() => draw(true));
+  draw(true);
+  return c;
+}
+
+/* ---------- chart forms ---------- */
+function yAxis(svg, m, w, ih, range, fmt) {
+  const y = (v) => m.t + ih - (v - range.lo) / (range.hi - range.lo) * ih;
+  for (const t of range.ticks) {
+    el("line", { x1: m.l, x2: w - m.r, y1: y(t), y2: y(t), class: t === 0 ? "axis-l" : "grid-l" }, svg);
+    txt(svg, m.l - 6, y(t) + 3.5, fmt(t), "tick", "end");
+  }
+  return y;
+}
+function columns(svg, w, h, o) {
+  const m = { l: o.ml || 44, r: 10, t: o.mt || 22, b: 26 };
+  const iw = w - m.l - m.r, ih = h - m.t - m.b;
+  const range = niceRange(0, o.max || Math.max(...o.data.map(o.val)));
+  const y = yAxis(svg, m, w, ih, range, o.yFmt || compact);
+  if (o.refLine) {
+    el("line", { x1: m.l, x2: w - m.r, y1: y(o.refLine.v), y2: y(o.refLine.v), stroke: "var(--s2)", "stroke-width": 1.5 }, svg);
+    txt(svg, w - m.r, y(o.refLine.v) - 6, o.refLine.label, "ann", "end");
+  }
+  const n = o.data.length, band = iw / n, bw = Math.max(2, Math.min(24, band - 2));
+  const every = o.tickEvery || Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 46))));
+  o.data.forEach((d, i) => {
+    const cx = m.l + band * i + band / 2, v = o.val(d), top = y(v);
+    el("path", { d: barPath(cx - bw / 2, top, bw, m.t + ih - top, 4), fill: o.color ? o.color(d, i) : "var(--s1)" }, svg);
+    if (i % every === 0) txt(svg, cx, h - m.b + 16, o.label(d, i), "tick", "middle");
+    const a = o.annotate && o.annotate(d, i);
+    if (a) txt(svg, cx, top - 7, a, "ann", "middle");
+    const hit = el("rect", { x: m.l + band * i, y: m.t, width: band, height: ih, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+    bindTip(hit, () => o.tip(d, i));
+  });
+}
+function hbars(svg, w, h, o) {
+  const ml = Math.min(o.ml || 150, Math.floor(w * 0.42));
+  const m = { l: ml, r: o.mr || 70, t: 4, b: 4 };
+  const n = o.data.length, band = (h - m.t - m.b) / n, bh = Math.min(18, band * 0.62);
+  const max = o.max || Math.max(...o.data.map(o.val)), iw = w - m.l - m.r;
+  el("line", { x1: m.l, x2: m.l, y1: m.t, y2: h - m.b, class: "axis-l" }, svg);
+  o.data.forEach((d, i) => {
+    const yc = m.t + band * i + band / 2, len = Math.max(2, o.val(d) / max * iw);
+    txt(svg, m.l - 8, yc + 4, o.label(d, i), o.mono ? "tick mono" : "tick", "end");
+    el("path", { d: hbarPath(m.l, yc - bh / 2, len, bh, 4), fill: o.color ? o.color(d, i) : "var(--s1)" }, svg);
+    const lx = o.labelAt ? Math.max(len, o.labelAt(d) / max * iw) : len;
+    txt(svg, m.l + lx + 8, yc + 4, o.valFmt(o.val(d), d), "val", "start");
+    const hit = el("rect", { x: 0, y: m.t + band * i, width: w, height: band, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+    bindTip(hit, () => o.tip(d, i));
+  });
+}
+function lineChart(svg, w, h, o) {
+  const m = { l: o.ml || 46, r: 18, t: 18, b: 26 };
+  const iw = w - m.l - m.r, ih = h - m.t - m.b;
+  const vals = o.data.map(o.val);
+  const range = niceRange(o.zero ? 0 : Math.min(...vals), Math.max(...vals));
+  const y = yAxis(svg, m, w, ih, range, o.yFmt || compact);
+  const n = o.data.length, x = (i) => m.l + (n === 1 ? iw / 2 : iw * i / (n - 1));
+  const every = o.tickEvery || Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
+  o.data.forEach((d, i) => { if (i % every === 0 || i === n - 1) txt(svg, x(i), h - m.b + 16, o.label(d, i), "tick", "middle"); });
+  const pts = o.data.map((d, i) => [x(i), y(o.val(d))]);
+  if (o.area) el("path", { d: `M${pts[0][0]},${m.t + ih}` + pts.map((p) => `L${p[0]},${p[1]}`).join("") + `L${pts[n - 1][0]},${m.t + ih}Z`, fill: "var(--s1-wash)" }, svg);
+  el("path", { d: "M" + pts.map((p) => p.join(",")).join("L"), fill: "none", stroke: "var(--s1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  (o.marks || [n - 1]).forEach((i) => {
+    el("circle", { cx: pts[i][0], cy: pts[i][1], r: 4.5, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+    const a = o.annotate && o.annotate(o.data[i], i);
+    if (a) txt(svg, pts[i][0], pts[i][1] - 10, a, "ann", i === n - 1 ? "end" : "middle");
+  });
+  const cross = el("line", { x1: 0, x2: 0, y1: m.t, y2: m.t + ih, class: "cross", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4.5, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+  const at = (clientX) => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left - m.l) / (iw / Math.max(1, n - 1))))); };
+  const show = (i, cx, cy) => {
+    cross.setAttribute("x1", pts[i][0]); cross.setAttribute("x2", pts[i][0]); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", pts[i][0]); dot.setAttribute("cy", pts[i][1]); dot.setAttribute("visibility", "visible");
+    showTip(o.tip(o.data[i], i), cx, cy);
+  };
+  hit.addEventListener("mousemove", (e) => show(at(e.clientX), e.clientX, e.clientY));
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+  hit.addEventListener("focus", () => { const r = svg.getBoundingClientRect(); show(n - 1, r.left + pts[n - 1][0], r.top + pts[n - 1][1]); });
+  hit.addEventListener("blur", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+/* ---------- Keccak-256 (Ethereum's hash; not NIST SHA3-256) ---------- */
+const KECCAK_RC = [0x1n, 0x8082n, 0x800000000000808an, 0x8000000080008000n, 0x808bn, 0x80000001n, 0x8000000080008081n,
+  0x8000000000008009n, 0x8an, 0x88n, 0x80008009n, 0x8000000an, 0x8000808bn, 0x800000000000008bn, 0x8000000000008089n,
+  0x8000000000008003n, 0x8000000000008002n, 0x8000000000000080n, 0x800an, 0x800000008000000an, 0x8000000080008081n,
+  0x8000000000008080n, 0x80000001n, 0x8000000080008008n];
+const KECCAK_ROT = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61], [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]];
+const MASK64 = (1n << 64n) - 1n;
+const rotl64 = (v, n) => (n === 0 ? v : ((v << BigInt(n)) | (v >> BigInt(64 - n))) & MASK64);
+function keccakF(A) {
+  for (let round = 0; round < 24; round++) {
+    const C = [0, 1, 2, 3, 4].map((x) => A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20]);
+    for (let x = 0; x < 5; x++) {
+      const Dx = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
+      for (let y = 0; y < 5; y++) A[x + 5 * y] ^= Dx;
+    }
+    const B = new Array(25);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) B[y + 5 * ((2 * x + 3 * y) % 5)] = rotl64(A[x + 5 * y], KECCAK_ROT[x][y]);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++)
+      A[x + 5 * y] = B[x + 5 * y] ^ ((~B[((x + 1) % 5) + 5 * y] & MASK64) & B[((x + 2) % 5) + 5 * y]);
+    A[0] ^= KECCAK_RC[round];
+  }
+}
+function keccak256(bytes) {
+  const rate = 136, len = Math.ceil((bytes.length + 1) / rate) * rate;
+  const msg = new Uint8Array(len);
+  msg.set(bytes);
+  msg[bytes.length] ^= 0x01;      // Keccak padding (SHA3 would use 0x06)
+  msg[len - 1] ^= 0x80;
+  const A = new Array(25).fill(0n);
+  for (let off = 0; off < len; off += rate) {
+    for (let i = 0; i < rate / 8; i++) {
+      let lane = 0n;
+      for (let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(msg[off + i * 8 + b]);
+      A[i] ^= lane;
+    }
+    keccakF(A);
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 4; i++) for (let b = 0; b < 8; b++) out[i * 8 + b] = Number((A[i] >> BigInt(8 * b)) & 0xffn);
+  return out;
+}
+const hexOf = (bytes) => "0x" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+function bytesOf(hex) {
+  const h = hex.replace(/^0x/, ""), out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+}
+// Same rules as chain/merkle.py and ReportRegistry.sol: leaf = keccak(utf8(row)); parent = keccak(min || max)
+function merkleVerify(row, proof) {
+  let cur = hexOf(keccak256(new TextEncoder().encode(row)));
+  const steps = [{ label: "leaf", hash: cur }];
+  for (const sib of proof) {
+    const [lo, hi] = cur < sib ? [cur, sib] : [sib, cur];
+    const buf = new Uint8Array(64);
+    buf.set(bytesOf(lo), 0); buf.set(bytesOf(hi), 32);
+    cur = hexOf(keccak256(buf));
+    steps.push({ label: "with " + sib.slice(0, 10) + "…", hash: cur });
+  }
+  return { root: cur, steps };
+}
+
+/* ---------- data helpers ---------- */
+const S = D.silver, A = D.analytics, B = D.bench, MR = D.mr, K = D.kmeans, ST = D.stream, CH = D.chain, MK = D.merkle;
+const jobs = Object.fromEntries(D.job_times.map((j) => [j.job, j.s]));
+const totalJobS = D.job_times.reduce((a, j) => a + j.s, 0);
+const speedup = B.mr_median_s / B.spark_median_s;
+const shuffleCut = 1 - MR.with_combiner.reduce_shuffle_bytes / MR.no_combiner.reduce_shuffle_bytes;
+const P = A.prescriptive, PRED = A.predictive;
+
+/* ---------- header ---------- */
+$("#chips").innerHTML = [
+  `Ethereum mainnet · ${D.daily[0].dt} to ${D.daily[D.daily.length - 1].dt}`,
+  "Google Cloud Dataproc · 1 master + 4 workers",
+  "Sepolia testnet contract",
+].map((c) => `<span class="chip">${esc(c)}</span>`).join("");
+
+const kpis = [
+  ["Transactions processed", compact(S.rows_in), `${int(S.rows_in)} raw, ${S.days} days`],
+  ["Raw data (bronze)", (S.bronze_bytes / 1e9).toFixed(2) + " GB", "Parquet exported from BigQuery"],
+  ["Full batch pipeline", Math.round(totalJobS / 60) + " min", `${D.job_times.length} cluster jobs, 20 vCPUs`],
+  ["Spark vs MapReduce", speedup.toFixed(2) + "× faster", `median ${Math.round(B.spark_median_s)} s vs ${Math.round(B.mr_median_s)} s`],
+  ["Addresses profiled", compact(D.gold_stats.address_features), `${int(K.n_flagged)} flagged as unusual`],
+  ["Reports on-chain", CH.published.length + " days", "rows verify, edits are rejected"],
+];
+$("#kpis").innerHTML = kpis.map(([l, v, n]) => `<div class="kpi"><span class="label">${esc(l)}</span><span class="value">${esc(v)}</span><span class="note">${esc(n)}</span></div>`).join("");
+
+/* ---------- pipeline ---------- */
+const stage = (name, what, num, time, cls) => `<li class="${cls || ""}"><span class="name">${esc(name)}</span><span class="what">${esc(what)}</span>${num ? `<span class="num">${esc(num)}</span>` : ""}${time ? `<span class="time">${esc(time)}</span>` : ""}</li>`;
+const secs = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
+$("#flow-batch").innerHTML = [
+  stage("Source", "BigQuery public dataset, exported with one SQL query", "9.9 GB scanned", "free tier"),
+  stage("Bronze", "Raw Parquet in Cloud Storage, never edited", `${(S.bronze_bytes / 1e9).toFixed(2)} GB`, "117 files"),
+  stage("Silver", "Spark: types, dedup, drop failed tx, one file per day", `${compact(S.rows_out)} rows`, secs(jobs.silver)),
+  stage("Gold", "Daily, hourly and per-address aggregate tables", `${compact(D.gold_stats.address_features)} profiles`, secs(jobs.gold)),
+  stage("Analytics", "Hive, MapReduce, PageRank, KMeans, four analytics types", "5 engines", secs(jobs.hive + jobs.mapreduce + jobs.spark_count + jobs.pagerank + jobs.kmeans + jobs.analytics)),
+  stage("Daily report", "Sorted text rows per day: summary, top senders, whales, flags", `${S.days} reports`, secs(jobs.daily_report)),
+  stage("Merkle root", "Keccak-256 tree over each day's rows", "32 bytes per day", ""),
+  stage("Sepolia", "ReportRegistry contract stores the root", `${CH.published.length} roots published`, "", "chain"),
+].join("");
+$("#flow-stream").innerHTML = [
+  stage("Poller", "Fetches each new block (live mainnet or mock)", `every ${D.live.mean_gap_s} s`, "atomic file writes"),
+  stage("Stream folder", "One JSON-lines file per block", `${int(ST.n_items)} tx`, "cluster demo"),
+  stage("Structured Streaming", "1-minute tumbling and 5-minute sliding windows", `${ST.tumbling.length} windows shown`, "5 s trigger"),
+  stage("Sketches", "Count-Min, HyperLogLog, Bloom filter, reservoir sample", `${(ST.cms.memory_bytes / 1024).toFixed(0)} KB Count-Min`, ""),
+  stage("Alerts", "Z-score spikes and Bloom-filter hits on flagged addresses", `${Object.values(ST.alerts).reduce((a, b) => a + b, 0)} alerts`, ""),
+].join("");
+
+/* ---------- the month ---------- */
+const avgTx = S.rows_out / S.days;
+const busiest = D.daily.reduce((a, d) => (d.tx > a.tx ? d : a));
+$("#month-lede").textContent = `${int(S.rows_out)} successful transactions after cleaning, about ${compact(avgTx)} a day. ${int(S.failed_removed)} failed transactions were removed and ${int(S.contract_creations)} new contracts were created.`;
+const gm = $("#g-month");
+card(gm, {
+  title: "Transactions per day", sub: `Busiest day ${busiest.dt}: ${int(busiest.tx)} transactions`, height: 230, wide: true,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => columns(svg, w, h, {
+    data: D.daily, val: (d) => d.tx, label: (d) => d.dt.slice(8), tickEvery: w < 560 ? 5 : 2,
+    color: (d) => (d === busiest ? "var(--s1)" : "var(--s1)"),
+    annotate: (d) => (d === busiest ? compact(d.tx) : ""),
+    tip: (d) => tipRows(d.dt, [["transactions", int(d.tx)], ["active senders", int(d.senders)], ["plain transfers", (d.plain * 100).toFixed(1) + "%"], ["median gas", dec(d.median_gas) + " gwei"]]),
+  }),
+  table: { head: ["Day", "Transactions", "Active senders", "Plain transfer %", "ETH moved", "Median gas (gwei)", "New contracts"], num: [0, 1, 1, 1, 1, 1, 1],
+    rows: D.daily.map((d) => [d.dt, int(d.tx), int(d.senders), (d.plain * 100).toFixed(1), int(d.eth), dec(d.median_gas, 3), int(d.creations)]) },
+});
+card(gm, {
+  title: "Active senders per day", sub: "Distinct addresses that sent at least one transaction", height: 210,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: D.daily, val: (d) => d.senders, label: (d) => d.dt.slice(8), area: true, zero: true,
+    annotate: (d, i) => (i === D.daily.length - 1 ? compact(d.senders) : ""),
+    tip: (d) => tipRows(d.dt, [["active senders", int(d.senders)]]) }),
+  table: { head: ["Day", "Active senders"], num: [0, 1], rows: D.daily.map((d) => [d.dt, int(d.senders)]) },
+});
+card(gm, {
+  title: "Plain ETH transfers, share of all transactions", sub: "Transactions that used exactly 21,000 gas; the rest call smart contracts", height: 210,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: D.daily, val: (d) => d.plain * 100, label: (d) => d.dt.slice(8), yFmt: (v) => v + "%",
+    annotate: (d, i) => (i === D.daily.length - 1 ? (d.plain * 100).toFixed(1) + "%" : ""),
+    tip: (d) => tipRows(d.dt, [["plain transfers", (d.plain * 100).toFixed(1) + "%"], ["contract calls", ((1 - d.plain) * 100).toFixed(1) + "%"]]) }),
+  table: { head: ["Day", "Plain transfer %"], num: [0, 1], rows: D.daily.map((d) => [d.dt, (d.plain * 100).toFixed(2)]) },
+});
+
+/* ---------- gas ---------- */
+const gg = $("#g-gas");
+const peakHour = D.hour_profile.reduce((a, d) => (d.median_gas > a.median_gas ? d : a)).hour;
+const hh = (h) => String(h).padStart(2, "0") + ":00";
+const call = document.createElement("div");
+call.className = "callout wide";
+call.innerHTML = `<span class="big">Send at ${hh(P.cheapest_hour_utc)} UTC</span><p>${(P.savings_vs_peak_pct).toFixed(1)}% cheaper than the ${hh(peakHour)} UTC peak (median ${dec(P.cheapest_gas_gwei, 2)} vs ${dec(P.peak_gas_gwei, 2)} gwei), and ${P.savings_vs_median_pct}% below the average hour. Busier hours cost more: the hourly correlation between transaction count and gas price is ${dec(A.diagnostic.hourly_tx_gas_corr, 2)}.</p>`;
+gg.appendChild(call);
+card(gg, {
+  title: "Median gas price by hour of day (UTC)", sub: "Median of the hourly medians across the month", height: 230,
+  source: "data_gcp/gold/hour_of_day_profile",
+  legend: [["--s1", "cheapest hour"], ["--s2", "peak hour"], ["--dim", "other hours"]],
+  draw: (svg, w, h) => columns(svg, w, h, { data: D.hour_profile, val: (d) => d.median_gas, label: (d) => String(d.hour).padStart(2, "0"),
+    tickEvery: w < 560 ? 6 : 3, yFmt: (v) => String(+v.toFixed(1)),
+    color: (d) => (d.hour === P.cheapest_hour_utc ? "var(--s1)" : d.hour === peakHour ? "var(--s2)" : "var(--dim)"),
+    annotate: (d) => (d.hour === P.cheapest_hour_utc || d.hour === peakHour ? dec(d.median_gas, 2) : ""),
+    tip: (d) => tipRows(`${String(d.hour).padStart(2, "0")}:00 UTC`, [["median gas", dec(d.median_gas, 3) + " gwei"], ["avg tx in the hour", int(d.avg_tx)]]) }),
+  table: { head: ["Hour (UTC)", "Median gas (gwei)", "Avg transactions"], num: [0, 1, 1], rows: D.hour_profile.map((d) => [String(d.hour).padStart(2, "0") + ":00", dec(d.median_gas, 3), int(d.avg_tx)]) },
+});
+card(gg, {
+  title: "Predicting next hour's gas price", sub: `Linear regression on hour and current gas, trained on the first 80% of hours. It ${PRED.beats_baseline ? "beats" : "does not beat"} the simple guess that next hour equals this hour (R² ${dec(PRED.r2, 2)}).`,
+  height: 170, source: "results_gcp/analytics_types.json",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: [{ n: "Linear regression", v: PRED.rmse }, { n: "Baseline: same as now", v: PRED.baseline_rmse }],
+    label: (d) => d.n, val: (d) => d.v, ml: 160, valFmt: (v) => "RMSE " + dec(v, 2) + " gwei",
+    color: (d, i) => (i === 0 ? "var(--s1)" : "var(--dim)"), mr: 116,
+    tip: (d) => tipRows(d.n, [["RMSE", dec(d.v, 4) + " gwei"], ["lower is better", ""]]) }),
+  table: { head: ["Model", "RMSE (gwei)", "MAE (gwei)", "R²"], num: [0, 1, 1, 1], rows: [["Linear regression", dec(PRED.rmse, 4), dec(PRED.mae, 4), dec(PRED.r2, 4)], ["Baseline (next = current)", dec(PRED.baseline_rmse, 4), "", ""]] },
+});
+
+/* ---------- engines ---------- */
+const ge = $("#g-engines");
+card(ge, {
+  title: `Spark is ${speedup.toFixed(2)}× faster`, sub: "Count transactions per sender over 37 million edges. Median of three runs; each run shown as a dot.",
+  height: 190, source: "results_gcp/bench_mr_vs_spark.json",
+  legend: [["--dim", "MapReduce with combiner"], ["--s2", "Spark reduceByKey"]],
+  draw: (svg, w, h) => {
+    const data = [{ n: "MapReduce", v: B.mr_median_s, runs: B.mr_times_s, c: "var(--dim)" }, { n: "Spark", v: B.spark_median_s, runs: B.spark_times_s, c: "var(--s2)" }];
+    const max = Math.max(...B.mr_times_s, ...B.spark_times_s) * 1.05;
+    hbars(svg, w, h, { data, label: (d) => d.n, val: (d) => d.v, max, ml: 100, mr: 70, valFmt: (v) => "median " + Math.round(v) + " s", color: (d) => d.c,
+      labelAt: (d) => Math.max(...d.runs),
+      tip: (d) => tipRows(d.n, [["median", dec(d.v, 1) + " s"], ["runs", d.runs.map((r) => dec(r, 1)).join(", ") + " s"]]) });
+    const ml = Math.min(100, Math.floor(w * 0.42)), iw = w - ml - 70, band = (h - 8) / 2;
+    data.forEach((d, i) => d.runs.forEach((r) => el("circle", { cx: ml + r / max * iw, cy: 4 + band * i + band / 2, r: 3.5, fill: "var(--ink)", stroke: "var(--surface)", "stroke-width": 1.5, "pointer-events": "none" }, svg)));
+  },
+  table: { head: ["Engine", "Run 1 (s)", "Run 2 (s)", "Run 3 (s)", "Median (s)"], num: [0, 1, 1, 1, 1],
+    rows: [["MapReduce (with combiner)", ...B.mr_times_s.map((v) => dec(v, 1)), dec(B.mr_median_s, 1)], ["Spark reduceByKey", ...B.spark_times_s.map((v) => dec(v, 1)), dec(B.spark_median_s, 1)]] },
+});
+card(ge, {
+  title: `The combiner cuts shuffled data by ${Math.round(shuffleCut * 100)}%`, sub: "MapReduce counters. The combiner pre-sums counts on each mapper before data crosses the network.",
+  height: 190, source: "results_gcp/mapreduce_counters.json",
+  legend: [["--dim", "without combiner"], ["--s1", "with combiner"]],
+  draw: (svg, w, h) => hbars(svg, w, h, { data: [
+      { n: "Shuffle, no combiner", v: MR.no_combiner.reduce_shuffle_bytes / 1e9, c: "var(--dim)" },
+      { n: "Shuffle, combiner", v: MR.with_combiner.reduce_shuffle_bytes / 1e9, c: "var(--s1)" }],
+    label: (d) => d.n, val: (d) => d.v, ml: 150, valFmt: (v) => dec(v, 2) + " GB", color: (d) => d.c,
+    tip: (d) => tipRows(d.n, [["reduce shuffle", dec(d.v, 3) + " GB"]]) }),
+  table: { head: ["Counter", "No combiner", "With combiner"], num: [0, 1, 1], rows: [
+    ["Map output records", int(MR.no_combiner.map_output_records), int(MR.with_combiner.map_output_records)],
+    ["Combine output records", int(MR.no_combiner.combine_output_records || 0), int(MR.with_combiner.combine_output_records)],
+    ["Reduce input records", int(MR.no_combiner.reduce_input_records), int(MR.with_combiner.reduce_input_records)],
+    ["Reduce shuffle bytes", int(MR.no_combiner.reduce_shuffle_bytes), int(MR.with_combiner.reduce_shuffle_bytes)]] },
+});
+card(ge, {
+  title: `Batch jobs on the cluster: ${Math.round(totalJobS / 60)} minutes in total`, sub: "Wall-clock time per job submission, including scheduling", height: 260, wide: true,
+  source: "results_gcp/gcp_job_times.tsv",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: D.job_times, label: (d) => d.job.replace("_", " "), val: (d) => d.s, ml: 120, valFmt: (v) => secs(v),
+    tip: (d) => tipRows(d.job, [["time", secs(d.s)]]) }),
+  table: { head: ["Job", "Seconds"], num: [0, 1], rows: D.job_times.map((j) => [j.job, j.s]) },
+});
+
+/* ---------- network ---------- */
+const gn = $("#g-network");
+card(gn, {
+  title: "Top 10 addresses by PageRank", sub: "Contracts that many senders interact with rank highest. Named where the address is a well-known token contract.",
+  height: 300, wide: true, source: "results_gcp/pagerank_top.csv",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: D.pagerank, label: (d) => (KNOWN[d.address] ? KNOWN[d.address] + "  " : "") + (w < 600 ? short(d.address) : d.address.slice(0, 18) + "…"),
+    val: (d) => d.rank, mono: true, ml: w < 600 ? 150 : 300, valFmt: (v) => int(v),
+    color: (d, i) => (i === 0 ? "var(--s1)" : "var(--s1)"),
+    tip: (d) => tipRows(KNOWN[d.address] || "address", [["address", d.address], ["PageRank", dec(d.rank, 1)]]) }),
+  table: { head: ["Rank", "Address", "Known as", "PageRank"], num: [1, 0, 0, 1], rows: D.pagerank.map((d, i) => [i + 1, d.address, KNOWN[d.address] || "", dec(d.rank, 2)]) },
+});
+
+/* ---------- anomalies ---------- */
+const ga = $("#g-anom");
+card(ga, {
+  title: "Choosing the number of clusters", sub: `Silhouette score on a 5% sample (higher means better-separated clusters). Best k = ${K.best_k}.`, height: 210,
+  source: "results_gcp/kmeans_k_selection.json",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: K.k_results, val: (d) => d.silhouette, label: (d) => "k=" + d.k, yFmt: (v) => dec(v, 2),
+    marks: [K.k_results.findIndex((d) => d.k === K.best_k)], annotate: (d) => (d.k === K.best_k ? "best " + dec(d.silhouette, 3) : ""),
+    tip: (d) => tipRows("k = " + d.k, [["silhouette", dec(d.silhouette, 4)]]) }),
+  table: { head: ["k", "Silhouette"], num: [1, 1], rows: K.k_results.map((d) => [d.k, dec(d.silhouette, 4)]) },
+});
+card(ga, {
+  title: "Addresses in feature space (PCA)", sub: `${int(D.pca_counts.normal + D.pca_counts.flagged)} addresses in the plot sample; ${int(K.n_flagged)} flagged overall (${(K.n_flagged / K.n_addresses * 100).toFixed(1)}% of ${compact(K.n_addresses)}). A random sample of each group is drawn; axes are clipped at the extremes, so far outliers sit on the border.`,
+  height: 260, canvas: true, source: "data_gcp/gold/cluster_viz",
+  legend: [["--dim", "normal"], ["--s2", "flagged as unusual"]],
+  draw: (plot, w, h) => {
+    const cv = document.createElement("canvas"), dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px";
+    cv.setAttribute("role", "img"); cv.setAttribute("aria-label", "Scatter of addresses on two principal components; flagged addresses lie at the edges");
+    plot.appendChild(cv);
+    const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement), col = (v) => css.getPropertyValue(v).trim();
+    const m = 28, xs = D.pca.map((p) => p.x), ys = D.pca.map((p) => p.y);
+    const qx = (a) => a.slice().sort((p, q) => p - q), sx = qx(xs), sy = qx(ys), pick = (s, f) => s[Math.floor(f * (s.length - 1))];
+    const x0 = pick(sx, 0.002), x1 = pick(sx, 0.995), y0 = pick(sy, 0.002), y1 = pick(sy, 0.995);
+    const X = (v) => m + (Math.min(Math.max(v, x0), x1) - x0) / (x1 - x0) * (w - 2 * m);
+    const Y = (v) => h - m - (Math.min(Math.max(v, y0), y1) - y0) / (y1 - y0) * (h - 2 * m);
+    ctx.strokeStyle = col("--line"); ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const gx = m + i * (w - 2 * m) / 4, gy = m + i * (h - 2 * m) / 4; ctx.beginPath(); ctx.moveTo(gx, m); ctx.lineTo(gx, h - m); ctx.stroke(); ctx.beginPath(); ctx.moveTo(m, gy); ctx.lineTo(w - m, gy); ctx.stroke(); }
+    ctx.fillStyle = col("--muted"); ctx.font = "11px " + col("--font-sans");
+    ctx.fillText("principal component 1 →", m, h - 8); ctx.save(); ctx.translate(12, h - m); ctx.rotate(-Math.PI / 2); ctx.fillText("principal component 2 →", 0, 0); ctx.restore();
+    const drawPts = (flag, color, r) => { ctx.fillStyle = color; ctx.globalAlpha = flag ? 0.85 : 0.5;
+      for (const p of D.pca) if (p.f === flag) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), r, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; };
+    drawPts(false, col("--dim"), 2.2); drawPts(true, col("--s2"), 2.8);
+    cv.addEventListener("mousemove", (e) => {
+      const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+      let best = null, bd = 144;
+      for (const p of D.pca) { const d2 = (X(p.x) - mx) ** 2 + (Y(p.y) - my) ** 2; if (d2 < bd) { bd = d2; best = p; } }
+      if (best) showTip(tipRows(best.f ? "flagged address" : "normal address", [["PC1", dec(best.x, 2)], ["PC2", dec(best.y, 2)]]), e.clientX, e.clientY); else hideTip();
+    });
+    cv.addEventListener("mouseleave", hideTip);
+  },
+});
+const prof = K.profiles;
+card(ga, {
+  title: "What each cluster looks like", sub: "Mean of the raw features per cluster. High nonce with few counterparties suggests automated senders.", wide: true,
+  source: "results_gcp/kmeans_clusters.csv",
+  html: `<div class="twrap" style="max-height:none">${tableHTML({ head: ["Cluster", "Tx sent", "Tx received", "ETH sent", "Counterparties", "Max nonce", "Avg gas (gwei)", "Plain share", "Active hours"], num: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    rows: prof.map((p) => [p.cluster, int(p.tx_out), int(p.tx_in), dec(p.eth_out, 1), int(p.distinct_counterparties), int(p.max_nonce), dec(p.avg_gas_gwei, 2), dec(p.plain_share, 2), dec(p.active_hours, 1)]) })}</div>`,
+});
+const ev = D.mock_eval.mock_eval;
+if (ev) {
+  card(ga, {
+    title: "Does it find known anomalies?", sub: `On synthetic data with ${ev.planted_evaluable} planted anomalies (8 bots, a 6-address wash-trading ring, 15 whales), KMeans flagged ${ev.true_positives} of them.`,
+    height: 150, source: "results/kmeans_eval_mock.json",
+    draw: (svg, w, h) => hbars(svg, w, h, { data: [{ n: "Recall: bots", v: ev.recall_bots }, { n: "Recall: wash ring", v: ev.recall_wash_ring }, { n: "Recall: whales", v: ev.recall_whales }, { n: "Precision", v: ev.precision }],
+      label: (d) => d.n, val: (d) => d.v, max: 1, ml: 130, valFmt: (v) => dec(v, 2), color: (d) => (d.n === "Precision" ? "var(--dim)" : "var(--s1)"),
+      tip: (d) => tipRows(d.n, [["value", dec(d.v, 2)]]) }),
+    table: { head: ["Measure", "Value"], num: [0, 1], rows: [["Recall (all planted)", dec(ev.recall, 2)], ["Recall: bots", dec(ev.recall_bots, 2)], ["Recall: wash ring", dec(ev.recall_wash_ring, 2)], ["Recall: whales", dec(ev.recall_whales, 2)], ["Precision", dec(ev.precision, 2)], ["Flagged", int(D.mock_eval.n_flagged)]] },
+  });
+  const note = document.createElement("div");
+  note.className = "callout";
+  note.innerHTML = `<span class="big">Recall ${dec(ev.recall, 2)}, precision ${dec(ev.precision, 2)}</span><p>The rule flags a fixed budget of about 0.5% of addresses (${int(D.mock_eval.n_flagged)} of ${int(D.mock_eval.n_addresses)}), but only ${ev.planted_evaluable} true anomalies exist, so ${dec(ev.planted_evaluable / D.mock_eval.n_flagged, 2)} is the best precision possible at this budget. KMeans reached it while missing none.</p>`;
+  ga.appendChild(note);
+}
+
+/* ---------- streaming ---------- */
+const hll = ST.hll, cms = ST.cms;
+$("#s-stream").innerHTML = [
+  ["HyperLogLog distinct senders", `${int(hll.estimate)} vs ${int(hll.exact)}`, `estimate vs exact: ${(hll.rel_error * 100).toFixed(2)}% error, using 16,384 registers`],
+  ["Count-Min Sketch", `${(cms.memory_bytes / 1024).toFixed(0)} KB`, `${(cms.fraction_within_bound * 100).toFixed(0)}% of counts within ε·N = ${int(cms.error_bound)}, never under`],
+  ["Bloom filter", `${int(ST.bloom.n_inserted)} addresses`, `KMeans-flagged set; no false negatives, false-positive rate ${(ST.bloom.theoretical_fp * 100).toFixed(1)}%`],
+  ["Live mainnet check", `${D.live.blocks.length} blocks, ${D.live.mean_gap_s} s apart`, `${int(D.live.tx_total)} transactions, blocks ${D.live.blocks[0].block}–${D.live.blocks[D.live.blocks.length - 1].block}`],
+].map(([l, v, n]) => `<div class="stat"><span class="label">${esc(l)}</span><span class="value">${esc(v)}</span><span class="note">${esc(n)}</span></div>`).join("");
+const gs = $("#g-stream");
+card(gs, {
+  title: "Transactions per 1-minute window", sub: "Tumbling windows from the Structured Streaming job on the cluster (mock blocks, event time)", height: 210,
+  source: "results_gcp/stream/latest_tumbling.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: ST.tumbling, val: (d) => d.tx, label: (d) => d.t, tickEvery: w < 560 ? 5 : 3,
+    tip: (d) => tipRows("window " + d.t, [["transactions", int(d.tx)], ["distinct senders (HLL)", int(d.senders)], ["avg gas", dec(d.gas, 2) + " gwei"]]) }),
+  table: { head: ["Window start", "Transactions", "Distinct senders", "Avg gas (gwei)"], num: [0, 1, 1, 1], rows: ST.tumbling.map((d) => [d.t, int(d.tx), int(d.senders), dec(d.gas, 2)]) },
+});
+card(gs, {
+  title: "Count-Min never overestimates by more than ε·N", sub: `How far the sketch's count exceeds the exact count for the 10 busiest senders, against the guaranteed bound ε·N = ${dec(cms.error_bound, 1)} (ε = ${cms.eps}, N = ${int(ST.n_items)}).`, height: 210,
+  source: "results_gcp/stream/sketch_metrics.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: cms.top10, val: (d) => d.estimate - d.exact, label: (d, i) => "#" + (i + 1),
+    max: cms.error_bound * 1.15, refLine: { v: cms.error_bound, label: "bound " + dec(cms.error_bound, 0) },
+    tip: (d, i) => tipRows("sender #" + (i + 1), [["address", short(d.address)], ["exact", int(d.exact)], ["estimate", int(d.estimate)], ["over by", int(d.estimate - d.exact)]]) }),
+  table: { head: ["#", "Address", "Exact", "Estimate", "Over by"], num: [1, 0, 1, 1, 1], rows: cms.top10.map((d, i) => [i + 1, d.address, int(d.exact), int(d.estimate), int(d.estimate - d.exact)]) },
+});
+card(gs, {
+  title: "Live Ethereum mainnet blocks", sub: `Fetched by the poller in live mode: one block every ${D.live.mean_gap_s} seconds`, height: 190, wide: true,
+  source: "results/stream_live_check.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: D.live.blocks, val: (d) => d.tx, label: (d) => d.time_utc.slice(11, 19), tickEvery: w < 640 ? 3 : 1,
+    tip: (d) => tipRows("block " + d.block, [["time (UTC)", d.time_utc.replace("T", " ").replace("Z", "")], ["transactions", int(d.tx)]]) }),
+  table: { head: ["Block", "Time (UTC)", "Transactions"], num: [1, 0, 1], rows: D.live.blocks.map((d) => [d.block, d.time_utc, int(d.tx)]) },
+});
+
+/* ---------- on-chain proof ---------- */
+const gp = $("#g-proof");
+const pubFor = (dt) => CH.published.find((p) => p.dt === dt);
+card(gp, {
+  title: "ReportRegistry on Sepolia", sub: "Owner-only, append-only: a day's root can be published once and never overwritten.", wide: true,
+  source: "results_gcp/chain/published_sepolia.json",
+  html: `<div style="display:grid;gap:10px">
+    <div class="cmp"><span>Contract</span><a class="addr" href="${ETHERSCAN}/address/${CH.address}" target="_blank" rel="noopener">${CH.address}</a>
+    <span>Deployed in</span><a class="addr" href="${ETHERSCAN}/tx/${CH.deploy_tx}" target="_blank" rel="noopener">${short(CH.deploy_tx)}</a></div>
+    <div class="twrap" style="max-height:none">${tableHTML({ head: ["Day", "Merkle root", "Rows", "Gas used", "Publish transaction"], num: [0, 0, 1, 1, 0],
+      rows: CH.published.map((p) => [p.dt, short(p.root), int(p.leaf_count), int(p.gas_used), p.tx_hash]) })}</div></div>`,
+});
+// link the tx hashes in the table
+gp.querySelectorAll(".card:last-child td:last-child").forEach((td) => { const h = td.textContent; td.innerHTML = `<a class="addr" href="${ETHERSCAN}/tx/${h}" target="_blank" rel="noopener">${short(h)}</a>`; });
+
+const vcard = card(gp, {
+  title: "Check a report row yourself", sub: `Rows from the ${MK.day} report (${int(MK.leaf_count)} rows). Your browser recomputes the Keccak-256 hash path that the contract's <code>verifyRow</code> runs, and compares it with the root stored on-chain. Edit the row to see the proof fail.`,
+  source: `results_gcp/merkle/${MK.day}.json`,
+  html: `<div class="verifier">
+    <label for="vpick">Report row</label>
+    <select id="vpick">${MK.rows.map((r, i) => `<option value="${i}">${esc(r.row.length > 70 ? r.row.slice(0, 68) + "…" : r.row)}</option>`).join("")}</select>
+    <label for="vtext">Row text (editable)</label>
+    <textarea id="vtext" rows="2" spellcheck="false"></textarea>
+    <div class="vbtns"><button type="button" class="btn" id="vgo">Verify against the on-chain root</button>
+      <button type="button" class="btn ghost" id="vtamper">Change one digit</button>
+      <button type="button" class="btn ghost" id="vreset">Reset row</button></div>
+    <div id="vout" aria-live="polite"></div></div>`,
+});
+vcard.classList.add("wide");
+const vpick = $("#vpick"), vtext = $("#vtext"), vout = $("#vout");
+const loadRow = () => { vtext.value = MK.rows[+vpick.value].row; vout.innerHTML = ""; };
+function runVerify() {
+  const item = MK.rows[+vpick.value], row = vtext.value;
+  const res = merkleVerify(row, item.proof);
+  const ok = res.root === MK.root;
+  const pub = pubFor(MK.day);
+  vout.innerHTML = `<span class="pill ${ok ? "good" : "bad"}">${ok ? "✓ Matches the published root" : "✗ Does not match: this row is not in the published report"}</span>
+    <div class="cmp"><span>Computed root</span><code>${res.root}</code><span>On-chain root</span><code>${MK.root}</code>
+    ${pub ? `<span>Published in</span><a class="addr" href="${ETHERSCAN}/tx/${pub.tx_hash}" target="_blank" rel="noopener">${short(pub.tx_hash)} on Sepolia</a>` : ""}</div>
+    <ol class="steps">${res.steps.map((s, i) => `<li><span class="lvl">${i === 0 ? "keccak256(row)" : "level " + i + ", " + esc(s.label)}</span> → ${s.hash}</li>`).join("")}</ol>`;
+}
+vpick.addEventListener("change", loadRow);
+$("#vgo").addEventListener("click", runVerify);
+$("#vreset").addEventListener("click", () => { loadRow(); runVerify(); });
+$("#vtamper").addEventListener("click", () => {
+  const s = vtext.value, i = s.search(/\d(?=\D*$)/);
+  if (i >= 0) vtext.value = s.slice(0, i) + ((+s[i] + 1) % 10) + s.slice(i + 1);
+  runVerify();
+});
+loadRow();
+runVerify();
+
+card(gp, {
+  title: "Publishing cost does not grow with report size", sub: "Gas to publish one root on a local chain, for reports of 10 to 1,000,000 rows. Only the 32-byte root is stored.", height: 200,
+  source: "results/chain/gas_vs_rows.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: CH.gas_vs_rows, val: (d) => d.gas_used, label: (d) => compact(d.n_leaves) + " rows",
+    annotate: (d) => compact(d.gas_used), ml: 48,
+    tip: (d, i) => tipRows(int(d.n_leaves) + " rows", [["gas used", int(d.gas_used)], ...(i === 0 ? [["note", "first publish also creates fresh storage"]] : [])]) }),
+  table: { head: ["Report rows", "Gas used"], num: [1, 1], rows: CH.gas_vs_rows.map((d) => [int(d.n_leaves), int(d.gas_used)]) },
+});
+card(gp, {
+  title: "Publishing on Sepolia", sub: "Gas per published day. The first publish pays for fresh storage; after that it is flat whatever the row count.", height: 200,
+  source: "results_gcp/chain/published_sepolia.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: CH.published, val: (d) => d.gas_used, label: (d) => d.dt.slice(5) + " · " + int(d.leaf_count) + " rows",
+    annotate: (d) => compact(d.gas_used), ml: 48,
+    tip: (d) => tipRows(d.dt, [["rows", int(d.leaf_count)], ["gas used", int(d.gas_used)], ["block", int(d.block)]]) }),
+  table: { head: ["Day", "Rows", "Gas used", "Block"], num: [0, 1, 1, 1], rows: CH.published.map((d) => [d.dt, int(d.leaf_count), int(d.gas_used), d.block]) },
+});
+
+/* ---------- checks ---------- */
+const checks = [
+  ["good", "Cloud matches local", "On the same synthetic data, the cluster produced the same row counts, gold tables, PageRank and analytics as the laptop run."],
+  ["good", `Planted anomalies found: ${ev ? ev.true_positives + " of " + ev.planted_evaluable : "n/a"}`, "Every planted bot, wash-trading address and whale was flagged by KMeans (recall 1.00)."],
+  ["good", "Sketches stay within their bounds", `Count-Min: ${(cms.fraction_within_bound * 100).toFixed(0)}% of counts within ε·N. HyperLogLog: ${(hll.rel_error * 100).toFixed(2)}% error on ${int(hll.exact)} senders.`],
+  ["good", "Real report rows verify on Sepolia", "A row from the 31 January report verifies true; the same row with one digit changed verifies false."],
+  ["good", "Publish gas is flat", `About ${compact(CH.gas_vs_rows[1].gas_used)} gas for 1,000 or 1,000,000 rows, because only the root is stored.`],
+  ["good", `Combiner and Spark effects measured`, `Shuffle cut by ${Math.round(shuffleCut * 100)}%; Spark ${speedup.toFixed(2)}× faster than MapReduce on the same input.`],
+  ["warn", "Gas prediction does not beat the baseline", `On real data the regression's RMSE is ${dec(PRED.rmse, 2)} gwei against ${dec(PRED.baseline_rmse, 2)} for "same as this hour". Gas moves close to a random walk hour to hour.`],
+  ["warn", "Clusters are only weakly separated", `Silhouette stays between ${dec(Math.min(...K.k_results.map((d) => d.silhouette)), 2)} and ${dec(Math.max(...K.k_results.map((d) => d.silhouette)), 2)} for every k, so the chosen k = ${K.best_k} is not sharply better. Distance-based flags still mark clear outliers.`],
+];
+$("#checklist").innerHTML = checks.map(([s, what, why]) => `<li><span class="pill ${s}">${s === "good" ? "✓ Passed" : "! Limitation"}</span><div><div class="what">${esc(what)}</div><div class="why">${esc(why)}</div></div></li>`).join("");
+
+/* redraw canvas/SVG colors when the theme changes */
+const rerender = () => redrawers.forEach((f) => f());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

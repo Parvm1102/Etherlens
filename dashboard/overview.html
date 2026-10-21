@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EtherLens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one scrolling ledger. Headline numbers, then the pipeline as a real
+   sequence, then each layer's findings, ending with the on-chain proof. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #fdfdfc;
+  --surface-2: #edf0f4;
+  --ink: #0d1117;
+  --ink-2: #485060;
+  --muted: #747b88;
+  --line: #e1e4ea;
+  --axis: #c2c7d0;
+  --s1: #2a78d6;
+  --s1-wash: rgba(42, 120, 214, 0.12);
+  --s2: #eb6834;
+  --dim: #a4afbf;
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warn: #fab219;
+  --warn-ink: #7a5000;
+  --crit: #d03b3b;
+  --ring: rgba(13, 17, 23, 0.10);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+  --step-3: 2.125rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0e11; --surface: #15181d; --surface-2: #1c2027; --ink: #eef0f3; --ink-2: #bcc2cc;
+    --muted: #8a909b; --line: #262a31; --axis: #3a3f48; --s1: #3987e5; --s1-wash: rgba(57, 135, 229, 0.16);
+    --s2: #d95926; --dim: #485263; --good-ink: #39c239; --warn-ink: #f0b429; --ring: rgba(255, 255, 255, 0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0e11; --surface: #15181d; --surface-2: #1c2027; --ink: #eef0f3; --ink-2: #bcc2cc;
+  --muted: #8a909b; --line: #262a31; --axis: #3a3f48; --s1: #3987e5; --s1-wash: rgba(57, 135, 229, 0.16);
+  --s2: #d95926; --dim: #485263; --good-ink: #39c239; --warn-ink: #f0b429; --ring: rgba(255, 255, 255, 0.10);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0;
+  background: var(--bg); color: var(--ink); font-family: var(--font-sans);
+  font-size: var(--step-0); line-height: 1.55; -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+a { color: var(--s1); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible, .hit:focus-visible {
+  outline: 2px solid var(--s1); outline-offset: 2px;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+/* Header */
+.mast { display: grid; gap: 14px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.mast h1 { font-size: var(--step-3); font-weight: 600; letter-spacing: -0.01em; }
+.mast h1 span { font-family: var(--font-mono); font-weight: 400; font-size: 0.5em; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+.mast p { margin: 0; max-width: 68ch; color: var(--ink-2); font-size: var(--step-1); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: var(--step--1); color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--step--1); }
+nav.toc a { color: var(--ink-2); text-decoration: none; }
+nav.toc a:hover { color: var(--ink); text-decoration: underline; }
+
+/* KPI strip */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-block: 24px 8px; }
+.kpi { background: var(--surface); padding: 16px 18px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.kpi .label { font-size: var(--step--1); color: var(--ink-2); }
+.kpi .value { font-size: var(--step-2); font-weight: 600; letter-spacing: -0.01em; }
+.kpi .note { font-size: var(--step--1); color: var(--muted); }
+
+/* Sections */
+section { padding-top: 40px; scroll-margin-top: 12px; }
+.shead { display: grid; gap: 6px; margin-bottom: 16px; }
+.shead .eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; }
+.shead h2 { font-size: var(--step-2); font-weight: 600; }
+.shead p { margin: 0; color: var(--ink-2); max-width: 72ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.wide { grid-column: 1 / -1; }
+
+/* Cards (charts) */
+.card { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 12px; display: grid; gap: 10px; min-width: 0; }
+.card figcaption { display: grid; gap: 2px; }
+.card h3 { font-size: var(--step-0); font-weight: 600; }
+.card .sub { margin: 0; font-size: var(--step--1); color: var(--ink-2); }
+.plot { width: 100%; min-width: 0; position: relative; }
+.plot svg, .plot canvas { display: block; max-width: 100%; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); }
+.foot code { font-size: 0.75rem; }
+.tbtn, .btn { font: inherit; cursor: pointer; border-radius: 6px; }
+.tbtn { font-size: 0.75rem; color: var(--ink-2); background: transparent; border: 1px solid var(--line); padding: 2px 9px; }
+.tbtn:hover { background: var(--surface-2); }
+.twrap { overflow-x: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: var(--step--1); font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 500; background: var(--surface-2); position: sticky; top: 0; }
+td.num, th.num { text-align: right; }
+
+/* SVG chart chrome */
+.grid-l { stroke: var(--line); stroke-width: 1; }
+.axis-l { stroke: var(--axis); stroke-width: 1; }
+.tick { fill: var(--muted); font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.tick.mono { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-2); }
+.val { fill: var(--ink-2); font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.ann { fill: var(--ink); font-size: 11.5px; font-weight: 600; font-family: var(--font-sans); }
+.hit { outline: none; cursor: default; }
+.cross { stroke: var(--axis); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--step--1); color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* Tooltip */
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14); border-radius: 8px; padding: 8px 10px; font-size: var(--step--1); max-width: 300px; line-height: 1.45; }
+#tip b { font-weight: 600; }
+#tip .k { color: var(--muted); }
+
+/* Pipeline flow */
+.flowwrap { display: grid; gap: 14px; }
+.lane { display: grid; gap: 8px; }
+.lane h3 { font-size: var(--step--1); font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+ol.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 22px; counter-reset: stage; }
+ol.flow li { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 10px; display: grid; gap: 3px; align-content: start; min-width: 0; counter-increment: stage; }
+ol.flow li::before { content: counter(stage); font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+ol.flow li:not(:last-child)::after { content: ""; position: absolute; right: -17px; top: 50%; width: 12px; height: 12px;
+  border-top: 2px solid var(--axis); border-right: 2px solid var(--axis); transform: translateY(-50%) rotate(45deg); }
+ol.flow .name { font-weight: 600; font-size: var(--step--1); }
+ol.flow .what { font-size: 0.78rem; color: var(--ink-2); line-height: 1.4; }
+ol.flow .num { font-size: var(--step--1); font-weight: 600; margin-top: 4px; }
+ol.flow .time { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); }
+ol.flow li.chain { border-color: var(--s1); }
+@media (max-width: 900px) {
+  ol.flow { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; gap: 18px; }
+  ol.flow li:not(:last-child)::after { right: auto; left: 50%; top: auto; bottom: -15px; transform: translateX(-50%) rotate(135deg); }
+}
+
+/* Callouts, stats, checks */
+.callout { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--s1); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; }
+.callout .big { font-size: var(--step-2); font-weight: 600; }
+.callout p { margin: 0; color: var(--ink-2); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.stat .label { font-size: var(--step--1); color: var(--ink-2); }
+.stat .value { font-size: var(--step-1); font-weight: 600; }
+.stat .note { font-size: 0.78rem; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--step--1); font-weight: 500; border-radius: 999px; padding: 2px 10px 2px 8px; white-space: nowrap; }
+.pill.good { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.pill.warn { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 20%, transparent); }
+.pill.bad { color: var(--crit); background: color-mix(in srgb, var(--crit) 13%, transparent); }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.checks li { background: var(--surface); padding: 12px 16px; display: grid; grid-template-columns: 9.5rem 1fr; gap: 12px; align-items: baseline; }
+.checks li div { min-width: 0; }
+.checks .what { font-weight: 500; }
+.checks .why { color: var(--ink-2); font-size: var(--step--1); }
+@media (max-width: 560px) { .checks li { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Contract + verifier */
+.addr { font-family: var(--font-mono); font-size: var(--step--1); overflow-wrap: anywhere; }
+.verifier { display: grid; gap: 10px; }
+.verifier label { font-size: var(--step--1); color: var(--ink-2); }
+.verifier select, .verifier textarea { font: inherit; font-family: var(--font-mono); font-size: var(--step--1); color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+.verifier textarea { resize: vertical; min-height: 2.6em; }
+.vbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font-size: var(--step--1); font-weight: 500; padding: 7px 14px; border: 1px solid var(--s1); background: var(--s1); color: #fff; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn.ghost:hover { background: var(--surface-2); }
+#vout { display: grid; gap: 8px; }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-2); max-height: 260px; overflow: auto; }
+.steps li { overflow-wrap: anywhere; }
+.steps .lvl { color: var(--muted); }
+.cmp { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: var(--step--1); }
+.cmp span:nth-child(odd) { color: var(--muted); }
+.cmp code { overflow-wrap: anywhere; }
+
+footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--step--1); display: grid; gap: 6px; }
+footer p { margin: 0; max-width: 90ch; }
+@media (prefers-reduced-motion: no-preference) { .btn, .tbtn { transition: background-color 0.15s ease; } }
+</style>
+
+<div class="page">
+  <header class="mast">
+    <h1>EtherLens <span>Ethereum · big data · on-chain proofs</span></h1>
+    <p id="lede">Every Ethereum transaction from January 2025, cleaned and analysed on a Hadoop and Spark cluster, with each day's report fingerprinted by a Merkle root that is stored on a public blockchain.</p>
+    <div class="chips" id="chips"></div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#pipeline">Pipeline</a><a href="#month">The month</a><a href="#gas">Gas</a><a href="#engines">Hadoop &amp; Spark</a>
+      <a href="#network">Network</a><a href="#anomalies">Anomalies</a><a href="#stream">Streaming</a><a href="#proof">On-chain proof</a><a href="#checks">Checks</a>
+    </nav>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section id="pipeline">
+    <div class="shead">
+      <span class="eyebrow">How it works</span>
+      <h2>From a public dataset to a verifiable report</h2>
+      <p>Raw data lands in a bronze layer that is never edited. Spark cleans it into silver, aggregates it into small gold tables, and every analysis reads from there. Times are wall-clock per cluster job.</p>
+    </div>
+    <div class="flowwrap">
+      <div class="lane"><h3>Batch</h3><ol class="flow" id="flow-batch"></ol></div>
+      <div class="lane"><h3>Streaming</h3><ol class="flow" id="flow-stream"></ol></div>
+    </div>
+  </section>
+
+  <section id="month">
+    <div class="shead">
+      <span class="eyebrow">Descriptive analytics</span>
+      <h2>January 2025 on Ethereum</h2>
+      <p id="month-lede"></p>
+    </div>
+    <div class="grid" id="g-month"></div>
+  </section>
+
+  <section id="gas">
+    <div class="shead">
+      <span class="eyebrow">Diagnostic, predictive and prescriptive analytics</span>
+      <h2>When is it cheapest to send a transaction?</h2>
+      <p>Gas price is what a sender pays per unit of work, in gwei (one billionth of an ether). Busy hours bid it up.</p>
+    </div>
+    <div class="grid" id="g-gas"></div>
+  </section>
+
+  <section id="engines">
+    <div class="shead">
+      <span class="eyebrow">Big data engines</span>
+      <h2>Hadoop MapReduce and Spark on the same job</h2>
+      <p>Both engines counted transactions per sender over the same edge list stored on HDFS. MapReduce writes to disk between phases; Spark keeps intermediate data in memory.</p>
+    </div>
+    <div class="grid" id="g-engines"></div>
+  </section>
+
+  <section id="network">
+    <div class="shead">
+      <span class="eyebrow">Graph analytics</span>
+      <h2>The most central addresses</h2>
+      <p>PageRank on Spark RDDs over the last 7 days of sender-to-receiver links, using the class formula (0.15 + 0.85 × incoming share, 10 iterations).</p>
+    </div>
+    <div class="grid" id="g-network"></div>
+  </section>
+
+  <section id="anomalies">
+    <div class="shead">
+      <span class="eyebrow">Machine learning</span>
+      <h2>Unusual addresses, found without labels</h2>
+      <p>Spark MLlib KMeans groups addresses by behaviour (volume, value, nonce, gas, counterparties). An address is flagged when it is very far from its cluster's centre or sits in a tiny cluster.</p>
+    </div>
+    <div class="grid" id="g-anom"></div>
+  </section>
+
+  <section id="stream">
+    <div class="shead">
+      <span class="eyebrow">Real-time processing</span>
+      <h2>Streaming with windows and sketches</h2>
+      <p>A poller writes one file per block. Spark Structured Streaming aggregates them in 1-minute tumbling and 5-minute sliding windows, while small probabilistic sketches count senders using kilobytes instead of a full table.</p>
+    </div>
+    <div class="stats" id="s-stream"></div>
+    <div class="grid" id="g-stream" style="margin-top:16px"></div>
+  </section>
+
+  <section id="proof">
+    <div class="shead">
+      <span class="eyebrow">Blockchain</span>
+      <h2>Reports anyone can check</h2>
+      <p>A smart contract cannot compute analytics, so a publisher posts the results. Each day's report rows are hashed into a Merkle tree and only the 32-byte root is stored on-chain. Any single row can then be proved part of the published report, and any edit breaks the proof.</p>
+    </div>
+    <div class="grid" id="g-proof"></div>
+  </section>
+
+  <section id="checks">
+    <div class="shead">
+      <span class="eyebrow">Validation</span>
+      <h2>What was checked</h2>
+      <p>Results on synthetic data with planted anomalies were compared with known answers before trusting the real run.</p>
+    </div>
+    <ul class="checks" id="checklist"></ul>
+  </section>
+
+  <footer>
+    <p>Data: Ethereum mainnet transactions, 1–31 January 2025, from the BigQuery public dataset <code>crypto_ethereum.transactions</code>. Processed on Google Cloud Dataproc 2.2 (Spark 3.5, Hadoop 3.3, Hive). Contract on the Sepolia test network.</p>
+    <p>Every figure on this page is read from the project's result files when the page is built: <code>python scripts/build_overview.py</code>. The file named under each chart is its source.</p>
+  </footer>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script type="application/json" id="data">{"silver":{"rows_in":37865791,"bad_rows":0,"duplicates_removed":0,"failed_removed":542011,"contract_creations":50601,"rows_out":37323780,"days":31,"runtime_s":313.68,"bronze_bytes":7017912535,"edge_count":37273390},"gold_stats":{"daily_stats":31,"hourly_gas":744,"hour_of_day_profile":24,"top_senders":1000,"whales":100,"address_features":1435758,"runtime_s":241.41},"job_times":[{"job":"silver","s":340},{"job":"gold","s":285},{"job":"hive","s":566},{"job":"mapreduce","s":350},{"job":"spark_count","s":87},{"job":"pagerank","s":142},{"job":"kmeans","s":301},{"job":"analytics","s":80},{"job":"daily_report","s":263}],"daily":[{"dt":"2025-01-01","tx":1016263,"senders":320722,"plain":0.3244,"eth":1600023,"median_gas":9.311,"creations":1240},{"dt":"2025-01-02","tx":1071552,"senders":361674,"plain":0.3381,"eth":1597110,"median_gas":14.087,"creations":1661},{"dt":"2025-01-03","tx":1217785,"senders":411170,"plain":0.336,"eth":1449236,"median_gas":10.548,"creations":2056},{"dt":"2025-01-04","tx":1143617,"senders":381227,"plain":0.326,"eth":944877,"median_gas":7.887,"creations":1707},{"dt":"2025-01-05","tx":1125976,"senders":374394,"plain":0.3143,"eth":605876,"median_gas":8.134,"creations":1682},{"dt":"2025-01-06","tx":1191688,"senders":383739,"plain":0.3245,"eth":1539932,"median_gas":12.203,"creations":2068},{"dt":"2025-01-07","tx":1194112,"senders":394879,"plain":0.3231,"eth":1801667,"median_gas":8.604,"creations":2253},{"dt":"2025-01-08","tx":1183841,"senders":379783,"plain":0.3193,"eth":2042551,"median_gas":7.759,"creations":2143},{"dt":"2025-01-09","tx":1185292,"senders":395651,"plain":0.3238,"eth":2146301,"median_gas":6.923,"creations":2428},{"dt":"2025-01-10","tx":1173819,"senders":392583,"plain":0.3245,"eth":1475819,"median_gas":6.0,"creations":2087},{"dt":"2025-01-11","tx":1104340,"senders":382146,"plain":0.3326,"eth":562980,"median_gas":3.717,"creations":2108},{"dt":"2025-01-12","tx":1079817,"senders":367087,"plain":0.3216,"eth":945916,"median_gas":2.99,"creations":2180},{"dt":"2025-01-13","tx":1200476,"senders":419156,"plain":0.3497,"eth":2081657,"median_gas":7.302,"creations":2270},{"dt":"2025-01-14","tx":1210634,"senders":446268,"plain":0.3678,"eth":1315512,"median_gas":6.38,"creations":2028},{"dt":"2025-01-15","tx":1218194,"senders":421647,"plain":0.3478,"eth":1314722,"median_gas":6.016,"creations":2194},{"dt":"2025-01-16","tx":1228092,"senders":415320,"plain":0.3394,"eth":1724266,"median_gas":6.963,"creations":2444},{"dt":"2025-01-17","tx":1228180,"senders":408921,"plain":0.3484,"eth":1983211,"median_gas":8.35,"creations":2526},{"dt":"2025-01-18","tx":1222371,"senders":381738,"plain":0.3467,"eth":1699475,"median_gas":13.986,"creations":1776},{"dt":"2025-01-19","tx":1319437,"senders":418252,"plain":0.3889,"eth":2310157,"median_gas":31.184,"creations":1743},{"dt":"2025-01-20","tx":1370551,"senders":453804,"plain":0.3949,"eth":2285234,"median_gas":31.421,"creations":1346},{"dt":"2025-01-21","tx":1251123,"senders":429692,"plain":0.3466,"eth":2250661,"median_gas":14.424,"creations":986},{"dt":"2025-01-22","tx":1255078,"senders":430358,"plain":0.345,"eth":1960987,"median_gas":9.585,"creations":885},{"dt":"2025-01-23","tx":1255202,"senders":442641,"plain":0.363,"eth":2181329,"median_gas":8.283,"creations":980},{"dt":"2025-01-24","tx":1356518,"senders":474978,"plain":0.3767,"eth":2000992,"median_gas":10.592,"creations":660},{"dt":"2025-01-25","tx":1386470,"senders":556402,"plain":0.4084,"eth":1090969,"median_gas":6.187,"creations":650},{"dt":"2025-01-26","tx":1206339,"senders":428605,"plain":0.3462,"eth":725604,"median_gas":5.146,"creations":734},{"dt":"2025-01-27","tx":1243355,"senders":411602,"plain":0.3294,"eth":2315763,"median_gas":9.403,"creations":727},{"dt":"2025-01-28","tx":1173927,"senders":407870,"plain":0.3343,"eth":2035862,"median_gas":5.439,"creations":1789},{"dt":"2025-01-29","tx":1158607,"senders":399612,"plain":0.3306,"eth":1124768,"median_gas":3.82,"creations":1048},{"dt":"2025-01-30","tx":1178212,"senders":403643,"plain":0.3353,"eth":1311679,"median_gas":3.742,"creations":1087},{"dt":"2025-01-31","tx":1172912,"senders":389746,"plain":0.3372,"eth":2534953,"median_gas":4.0,"creations":904}],"hour_profile":[{"hour":0,"median_gas":6.613,"avg_tx":48418},{"hour":1,"median_gas":5.781,"avg_tx":47541},{"hour":2,"median_gas":5.553,"avg_tx":47906},{"hour":3,"median_gas":5.768,"avg_tx":47381},{"hour":4,"median_gas":4.77,"avg_tx":46351},{"hour":5,"median_gas":5.052,"avg_tx":46700},{"hour":6,"median_gas":4.995,"avg_tx":47112},{"hour":7,"median_gas":5.145,"avg_tx":47734},{"hour":8,"median_gas":5.818,"avg_tx":50177},{"hour":9,"median_gas":6.44,"avg_tx":50931},{"hour":10,"median_gas":6.656,"avg_tx":50837},{"hour":11,"median_gas":6.578,"avg_tx":50909},{"hour":12,"median_gas":8.081,"avg_tx":51384},{"hour":13,"median_gas":11.025,"avg_tx":52291},{"hour":14,"median_gas":13.991,"avg_tx":52762},{"hour":15,"median_gas":15.104,"avg_tx":53548},{"hour":16,"median_gas":14.119,"avg_tx":53675},{"hour":17,"median_gas":12.733,"avg_tx":52667},{"hour":18,"median_gas":10.943,"avg_tx":52571},{"hour":19,"median_gas":10.194,"avg_tx":51500},{"hour":20,"median_gas":10.23,"avg_tx":51207},{"hour":21,"median_gas":8.957,"avg_tx":51020},{"hour":22,"median_gas":8.071,"avg_tx":50287},{"hour":23,"median_gas":6.368,"avg_tx":49083}],"analytics":{"descriptive":{"total_tx":37323780,"avg_tx_per_day":1203992.9,"total_eth":50960089.31,"avg_gas_gwei":12.801,"median_gas_gwei":7.887,"plain_transfer_share":0.3434},"diagnostic":{"hourly_tx_gas_corr":0.2732,"interpretation":"Positive: busier hours have higher gas prices (demand drives price)."},"predictive":{"rmse":2.6391,"mae":2.0256,"r2":0.5631,"baseline_rmse":2.2369,"beats_baseline":false,"note":"Chronological split (no leakage). Next-hour gas prediction."},"prescriptive":{"cheapest_hour_utc":4,"cheapest_gas_gwei":4.77,"peak_gas_gwei":15.104,"savings_vs_peak_pct":68.4,"savings_vs_median_pct":42.5,"recommendation":"Submit transactions at 04:00 UTC to save ~68.4% vs peak hour (15:00 UTC)."},"runtime_s":37.0},"bench":{"note":"Dataproc job duration (submit -> DONE) from the job records; MR = Hadoop Streaming with combiner, Spark = RDD reduceByKey; input = 37,273,390 edges (Jan 2025) on HDFS; cluster e2-standard-4 + 4 x e2-highmem-4. Shell wall-clock for MR incl. SSH cleanup: 175, 205, 178 s.","mr_times_s":[137.3,167.0,144.3],"spark_times_s":[70.5,77.9,74.3],"mr_median_s":144.3,"spark_median_s":74.3,"speedup_spark_vs_mr":1.94},"mr":{"no_combiner":{"map_output_records":37273390,"combine_input_records":0,"combine_output_records":0,"reduce_input_records":37273390,"reduce_shuffle_bytes":1751850818,"elapsed_s":null},"with_combiner":{"map_output_records":37273390,"combine_input_records":37273390,"combine_output_records":20096814,"reduce_input_records":20096814,"reduce_shuffle_bytes":944732024,"elapsed_s":null}},"pagerank":[{"address":"0xdac17f958d2ee523a2206206994597c13d831ec7","rank":17048.869906},{"address":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","rank":6682.623301},{"address":"0x76a0e27618462bdac7a29104bdcfff4e6bfcea2d","rank":6479.797604},{"address":"0x9a10da8ce77f26231860764a2caab36e70584c4b","rank":5869.602815},{"address":"0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511","rank":3784.162323},{"address":"0x640cb7201810bc920835a598248c4fe4898bb5e0","rank":2950.93271},{"address":"0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad","rank":2770.654678},{"address":"0xb5b1ca3496c736b225a78efa6b68c023b5375667","rank":2168.777612},{"address":"0xeba88149813bec1cccccfdb0dacefaaa5de94cb1","rank":2101.793823},{"address":"0x974caa59e49682cda0ad2bbe82983419a2ecc400","rank":1808.101466}],"pagerank_iters":{"iters":10,"iter_times_s":[0.036,0.034,0.028,0.028,0.049,0.026,0.025,0.024,0.024,0.045],"top_address":"0xdac17f958d2ee523a2206206994597c13d831ec7","top_rank":17048.8699062168,"runtime_s":113.2},"kmeans":{"k_results":[{"k":4,"silhouette":0.2667},{"k":5,"silhouette":0.2663},{"k":6,"silhouette":0.2429},{"k":7,"silhouette":0.2638},{"k":8,"silhouette":0.2587},{"k":9,"silhouette":0.2656},{"k":10,"silhouette":0.2782}],"best_k":10,"best_silhouette":0.2782,"n_flagged":7417,"n_addresses":1435758,"profiles":[{"cluster":0,"tx_out":12.82921269507277,"tx_in":15.55213264948273,"eth_out":16.181364422269247,"distinct_counterparties":9.080549710678591,"max_nonce":82.66557075223567,"avg_gas_gwei":12.42853013823805,"plain_share":0.8717503277781699,"active_hours":7.3521392249693145},{"cluster":1,"tx_out":7.724495267111309,"tx_in":0.6213689047459173,"eth_out":1.4521273751286017,"distinct_counterparties":5.534448113609373,"max_nonce":360.40764478029274,"avg_gas_gwei":10.831554025099942,"plain_share":0.1232208087396801,"active_hours":3.2075054745165636},{"cluster":2,"tx_out":4.779231009690529,"tx_in":2.4569990622069398,"eth_out":0.7517060912255024,"distinct_counterparties":5.188809002813379,"max_nonce":16.089659268521412,"avg_gas_gwei":18.32943165569978,"plain_share":0.5469398297915806,"active_hours":3.1205126602063147},{"cluster":3,"tx_out":13.4,"tx_in":4.0,"eth_out":711.5127274490893,"distinct_counterparties":12.6,"max_nonce":111.4,"avg_gas_gwei":6987.845777441142,"plain_share":0.8217687074829932,"active_hours":6.4},{"cluster":4,"tx_out":405.7153806258284,"tx_in":110.10061660807929,"eth_out":1141.915977842559,"distinct_counterparties":182.90647150348642,"max_nonce":9808.188036650723,"avg_gas_gwei":13.755996256148993,"plain_share":0.347985051382317,"active_hours":15.304212528093124},{"cluster":5,"tx_out":4.44106790763739,"tx_in":1.814807546746657,"eth_out":0.5187511488713789,"distinct_counterparties":4.122876036867795,"max_nonce":8.05328324596077,"avg_gas_gwei":10.18779861469645,"plain_share":0.11648088136038118,"active_hours":2.310482527045001},{"cluster":6,"tx_out":3.257453558921852,"tx_in":4.4710115726682975,"eth_out":11.387576634719377,"distinct_counterparties":3.4933623170309493,"max_nonce":14.543047034184493,"avg_gas_gwei":11.807351158931104,"plain_share":0.9670095433749534,"active_hours":2.584490694757394},{"cluster":7,"tx_out":11.29798378296708,"tx_in":3.1829424569532345,"eth_out":1.5120829838820526,"distinct_counterparties":7.176115410658027,"max_nonce":36.13284760577725,"avg_gas_gwei":11.188593461478025,"plain_share":0.15358025177060936,"active_hours":5.704187441592381},{"cluster":8,"tx_out":8.402038770901525,"tx_in":0.253660145644617,"eth_out":0.5414018281880258,"distinct_counterparties":2.5709002562736294,"max_nonce":41.6880376037147,"avg_gas_gwei":10.913199382092985,"plain_share":0.08245403614087887,"active_hours":5.078639212402629},{"cluster":9,"tx_out":53.53032652746481,"tx_in":2.5069101128409,"eth_out":4.4720553824485485,"distinct_counterparties":12.149529186980027,"max_nonce":1019.4856699767806,"avg_gas_gwei":11.922953084114713,"plain_share":0.12498066060069624,"active_hours":10.561188556544687}]},"mock_eval":{"best_k":6,"best_silhouette":0.3538,"n_addresses":19275,"n_flagged":114,"runtime_s":31.28,"mock_eval":{"planted_evaluable":29,"true_positives":29,"precision":0.2544,"recall":1.0,"recall_bots":1.0,"recall_wash_ring":1.0,"recall_whales":1.0}},"pca":[{"x":1.251,"y":1.49,"f":false},{"x":1.265,"y":0.78,"f":false},{"x":1.993,"y":0.203,"f":false},{"x":0.741,"y":1.113,"f":false},{"x":-0.96,"y":-3.73,"f":false},{"x":0.025,"y":1.71,"f":false},{"x":-3.709,"y":0.118,"f":false},{"x":0.524,"y":1.368,"f":false},{"x":1.769,"y":-0.25,"f":false},{"x":-0.402,"y":-1.051,"f":false},{"x":0.112,"y":1.45,"f":false},{"x":0.68,"y":-0.071,"f":false},{"x":0.795,"y":1.052,"f":false},{"x":0.518,"y":-1.272,"f":false},{"x":-1.817,"y":1.683,"f":false},{"x":-3.679,"y":-0.125,"f":false},{"x":-2.286,"y":-0.62,"f":false},{"x":-1.377,"y":-2.836,"f":false},{"x":-2.915,"y":0.793,"f":false},{"x":1.364,"y":-1.401,"f":false},{"x":1.946,"y":1.538,"f":false},{"x":-0.594,"y":0.38,"f":false},{"x":-4.103,"y":1.399,"f":false},{"x":0.542,"y":-0.227,"f":false},{"x":-0.01,"y":1.306,"f":false},{"x":0.472,"y":-0.646,"f":false},{"x":0.867,"y":0.558,"f":false},{"x":-1.835,"y":0.69,"f":false},{"x":-0.206,"y":0.883,"f":false},{"x":0.754,"y":0.382,"f":false},{"x":-2.294,"y":-3.222,"f":false},{"x":-3.216,"y":-0.426,"f":false},{"x":1.461,"y":1.088,"f":false},{"x":1.472,"y":-0.257,"f":false},{"x":0.597,"y":-2.415,"f":false},{"x":-2.195,"y":-0.891,"f":false},{"x":1.146,"y":-0.835,"f":false},{"x":-1.118,"y":0.228,"f":false},{"x":-7.073,"y":0.147,"f":false},{"x":-1.637,"y":1.055,"f":false},{"x":-1.321,"y":0.63,"f":false},{"x":-1.526,"y":0.991,"f":false},{"x":-0.101,"y":1.776,"f":false},{"x":0.22,"y":1.551,"f":false},{"x":0.863,"y":-0.295,"f":false},{"x":0.0,"y":-0.459,"f":false},{"x":-1.123,"y":0.129,"f":false},{"x":-0.082,"y":-0.104,"f":false},{"x":1.551,"y":0.266,"f":false},{"x":0.34,"y":1.239,"f":false},{"x":-0.399,"y":1.518,"f":false},{"x":0.188,"y":1.904,"f":false},{"x":-1.762,"y":1.822,"f":false},{"x":1.307,"y":-1.047,"f":false},{"x":1.32,"y":0.302,"f":false},{"x":1.914,"y":0.949,"f":false},{"x":0.699,"y":-1.431,"f":false},{"x":1.393,"y":0.757,"f":false},{"x":1.367,"y":-0.293,"f":false},{"x":-0.699,"y":-0.133,"f":false},{"x":-0.941,"y":-2.255,"f":false},{"x":-0.14,"y":-1.96,"f":false},{"x":-0.746,"y":1.485,"f":false},{"x":-0.769,"y":0.951,"f":false},{"x":-2.397,"y":0.816,"f":false},{"x":-0.307,"y":-2.062,"f":false},{"x":-2.644,"y":0.34,"f":false},{"x":-1.666,"y":0.858,"f":false},{"x":1.113,"y":0.376,"f":false},{"x":-0.986,"y":1.024,"f":false},{"x":0.171,"y":0.008,"f":false},{"x":0.184,"y":2.102,"f":false},{"x":-0.389,"y":0.282,"f":false},{"x":0.942,"y":-1.777,"f":false},{"x":-6.273,"y":-3.14,"f":false},{"x":1.058,"y":-1.961,"f":false},{"x":1.236,"y":-2.454,"f":false},{"x":0.551,"y":-0.218,"f":false},{"x":-0.55,"y":2.099,"f":false},{"x":1.767,"y":0.375,"f":false},{"x":0.16,"y":-2.645,"f":false},{"x":1.209,"y":2.119,"f":false},{"x":0.187,"y":0.251,"f":false},{"x":0.526,"y":-0.346,"f":false},{"x":0.647,"y":0.71,"f":false},{"x":-5.066,"y":-1.186,"f":false},{"x":-0.541,"y":1.626,"f":false},{"x":1.554,"y":1.643,"f":false},{"x":-0.559,"y":0.504,"f":false},{"x":2.136,"y":-1.135,"f":false},{"x":-2.068,"y":-1.106,"f":false},{"x":1.277,"y":1.638,"f":false},{"x":0.321,"y":0.557,"f":false},{"x":0.145,"y":-0.269,"f":false},{"x":-0.255,"y":1.217,"f":false},{"x":-1.943,"y":-1.06,"f":false},{"x":0.557,"y":1.03,"f":false},{"x":1.167,"y":-1.763,"f":false},{"x":0.951,"y":-0.034,"f":false},{"x":0.171,"y":-0.998,"f":false},{"x":0.108,"y":0.605,"f":false},{"x":2.193,"y":-0.855,"f":false},{"x":-0.717,"y":0.81,"f":false},{"x":0.591,"y":-0.385,"f":false},{"x":0.611,"y":1.506,"f":false},{"x":0.867,"y":0.41,"f":false},{"x":1.216,"y":0.835,"f":false},{"x":0.314,"y":0.833,"f":false},{"x":-1.071,"y":-0.293,"f":false},{"x":-2.8,"y":-2.607,"f":false},{"x":-2.882,"y":-0.625,"f":false},{"x":1.36,"y":0.592,"f":false},{"x":0.474,"y":0.48,"f":false},{"x":-1.374,"y":0.123,"f":false},{"x":1.689,"y":-0.484,"f":false},{"x":1.431,"y":-0.111,"f":false},{"x":0.893,"y":0.525,"f":false},{"x":0.326,"y":-1.584,"f":false},{"x":-2.937,"y":0.757,"f":false},{"x":-2.28,"y":-4.458,"f":false},{"x":0.977,"y":-0.019,"f":false},{"x":-0.333,"y":-1.707,"f":false},{"x":0.506,"y":0.176,"f":false},{"x":0.485,"y":1.009,"f":false},{"x":1.134,"y":0.411,"f":false},{"x":0.643,"y":0.688,"f":false},{"x":0.144,"y":0.463,"f":false},{"x":1.268,"y":0.725,"f":false},{"x":1.769,"y":-0.038,"f":false},{"x":1.267,"y":1.354,"f":false},{"x":-1.621,"y":-0.991,"f":false},{"x":0.956,"y":1.244,"f":false},{"x":-0.666,"y":1.752,"f":false},{"x":1.193,"y":-0.786,"f":false},{"x":0.122,"y":0.568,"f":false},{"x":-0.493,"y":-0.089,"f":false},{"x":-0.901,"y":2.174,"f":false},{"x":1.439,"y":1.46,"f":false},{"x":2.071,"y":0.651,"f":false},{"x":1.169,"y":0.737,"f":false},{"x":0.348,"y":-2.145,"f":false},{"x":-0.259,"y":0.908,"f":false},{"x":1.487,"y":-1.065,"f":false},{"x":-4.459,"y":-0.03,"f":false},{"x":0.847,"y":-1.055,"f":false},{"x":0.837,"y":1.245,"f":false},{"x":-2.227,"y":2.197,"f":false},{"x":1.072,"y":0.962,"f":false},{"x":1.736,"y":-0.726,"f":false},{"x":-0.763,"y":-0.124,"f":false},{"x":-3.145,"y":1.381,"f":false},{"x":0.704,"y":-0.341,"f":false},{"x":0.609,"y":0.403,"f":false},{"x":1.671,"y":-0.893,"f":false},{"x":-0.523,"y":0.553,"f":false},{"x":1.051,"y":0.785,"f":false},{"x":-2.33,"y":-0.213,"f":false},{"x":-3.961,"y":1.468,"f":false},{"x":0.641,"y":0.433,"f":false},{"x":2.105,"y":1.534,"f":false},{"x":1.588,"y":-1.06,"f":false},{"x":0.847,"y":1.007,"f":false},{"x":0.17,"y":-0.133,"f":false},{"x":1.043,"y":0.034,"f":false},{"x":-0.937,"y":0.162,"f":false},{"x":1.241,"y":-1.596,"f":false},{"x":-1.343,"y":-1.209,"f":false},{"x":1.448,"y":0.638,"f":false},{"x":0.053,"y":-1.045,"f":false},{"x":-0.227,"y":0.493,"f":false},{"x":1.343,"y":0.519,"f":false},{"x":0.941,"y":-0.724,"f":false},{"x":2.797,"y":-2.155,"f":false},{"x":-0.319,"y":0.812,"f":false},{"x":-2.288,"y":1.147,"f":false},{"x":-0.41,"y":0.006,"f":false},{"x":-0.309,"y":1.452,"f":false},{"x":-1.769,"y":-2.983,"f":false},{"x":-1.719,"y":0.731,"f":false},{"x":0.356,"y":1.206,"f":false},{"x":0.801,"y":-0.778,"f":false},{"x":0.4,"y":2.255,"f":false},{"x":1.758,"y":-2.176,"f":false},{"x":-4.907,"y":-3.825,"f":false},{"x":-1.247,"y":1.413,"f":false},{"x":-0.867,"y":-1.324,"f":false},{"x":1.038,"y":-1.697,"f":false},{"x":1.86,"y":0.159,"f":false},{"x":-0.046,"y":0.864,"f":false},{"x":-2.058,"y":0.974,"f":false},{"x":0.557,"y":1.249,"f":false},{"x":0.696,"y":-1.936,"f":false},{"x":-0.801,"y":1.539,"f":false},{"x":1.897,"y":-0.917,"f":false},{"x":-2.096,"y":-2.793,"f":false},{"x":1.492,"y":-1.748,"f":false},{"x":1.414,"y":-2.122,"f":false},{"x":1.136,"y":0.082,"f":false},{"x":-2.296,"y":-1.977,"f":false},{"x":-2.494,"y":0.246,"f":false},{"x":1.399,"y":0.751,"f":false},{"x":-0.093,"y":1.056,"f":false},{"x":1.069,"y":0.964,"f":false},{"x":0.844,"y":0.477,"f":false},{"x":-1.643,"y":1.679,"f":false},{"x":-4.362,"y":-0.315,"f":false},{"x":2.029,"y":1.513,"f":false},{"x":1.331,"y":-0.718,"f":false},{"x":0.674,"y":1.29,"f":false},{"x":-1.405,"y":1.65,"f":false},{"x":-2.043,"y":1.385,"f":false},{"x":-1.481,"y":0.774,"f":false},{"x":0.93,"y":0.083,"f":false},{"x":-0.644,"y":0.69,"f":false},{"x":-0.621,"y":1.958,"f":false},{"x":0.591,"y":1.892,"f":false},{"x":0.742,"y":-0.713,"f":false},{"x":1.332,"y":0.527,"f":false},{"x":-0.023,"y":0.117,"f":false},{"x":-1.366,"y":0.919,"f":false},{"x":0.251,"y":-1.619,"f":false},{"x":-0.493,"y":-1.799,"f":false},{"x":0.394,"y":0.375,"f":false},{"x":-1.218,"y":-0.198,"f":false},{"x":1.133,"y":-0.209,"f":false},{"x":0.441,"y":-1.311,"f":false},{"x":0.212,"y":0.646,"f":false},{"x":0.357,"y":0.483,"f":false},{"x":1.422,"y":-0.069,"f":false},{"x":1.21,"y":-1.715,"f":false},{"x":0.417,"y":1.435,"f":false},{"x":1.499,"y":0.702,"f":false},{"x":1.606,"y":0.455,"f":false},{"x":-3.674,"y":0.784,"f":false},{"x":-0.929,"y":0.555,"f":false},{"x":0.393,"y":1.657,"f":false},{"x":2.01,"y":0.7,"f":false},{"x":0.539,"y":1.977,"f":false},{"x":-0.235,"y":1.227,"f":false},{"x":1.683,"y":0.467,"f":false},{"x":-4.206,"y":-1.027,"f":false},{"x":2.628,"y":-2.447,"f":false},{"x":1.735,"y":0.633,"f":false},{"x":0.91,"y":0.542,"f":false},{"x":0.936,"y":-0.064,"f":false},{"x":-0.582,"y":-0.477,"f":false},{"x":0.525,"y":1.586,"f":false},{"x":1.072,"y":0.294,"f":false},{"x":1.632,"y":-0.499,"f":false},{"x":2.078,"y":-2.406,"f":false},{"x":0.592,"y":-1.938,"f":false},{"x":0.209,"y":1.14,"f":false},{"x":-0.423,"y":-0.353,"f":false},{"x":0.797,"y":1.366,"f":false},{"x":-1.158,"y":-0.173,"f":false},{"x":-1.837,"y":-2.299,"f":false},{"x":0.645,"y":0.586,"f":false},{"x":-0.088,"y":-1.944,"f":false},{"x":1.232,"y":1.726,"f":false},{"x":0.631,"y":-0.07,"f":false},{"x":2.11,"y":-0.265,"f":false},{"x":-0.609,"y":-0.638,"f":false},{"x":0.394,"y":-0.282,"f":false},{"x":-2.057,"y":-0.252,"f":false},{"x":-1.035,"y":0.053,"f":false},{"x":0.156,"y":-0.075,"f":false},{"x":-0.728,"y":0.104,"f":false},{"x":-0.016,"y":0.125,"f":false},{"x":-0.439,"y":1.516,"f":false},{"x":-0.057,"y":-2.77,"f":false},{"x":-1.148,"y":-2.609,"f":false},{"x":1.694,"y":0.048,"f":false},{"x":-2.026,"y":0.787,"f":false},{"x":-0.548,"y":0.204,"f":false},{"x":0.641,"y":-0.267,"f":false},{"x":1.298,"y":-1.14,"f":false},{"x":1.712,"y":-0.763,"f":false},{"x":-1.637,"y":-1.885,"f":false},{"x":-0.741,"y":0.485,"f":false},{"x":1.95,"y":-1.503,"f":false},{"x":1.412,"y":-1.183,"f":false},{"x":-1.175,"y":-1.809,"f":false},{"x":1.311,"y":0.72,"f":false},{"x":-0.121,"y":0.553,"f":false},{"x":1.193,"y":1.554,"f":false},{"x":-0.083,"y":-0.276,"f":false},{"x":0.246,"y":0.323,"f":false},{"x":-1.257,"y":1.725,"f":false},{"x":0.433,"y":1.384,"f":false},{"x":-0.211,"y":1.817,"f":false},{"x":-0.635,"y":1.432,"f":false},{"x":-1.315,"y":-0.304,"f":false},{"x":-1.209,"y":1.044,"f":false},{"x":1.362,"y":-1.815,"f":false},{"x":-0.388,"y":1.69,"f":false},{"x":0.178,"y":-0.987,"f":false},{"x":0.934,"y":-0.573,"f":false},{"x":-1.905,"y":0.707,"f":false},{"x":-1.388,"y":0.181,"f":false},{"x":-0.449,"y":1.668,"f":false},{"x":0.228,"y":-0.138,"f":false},{"x":-1.377,"y":0.038,"f":false},{"x":-0.337,"y":1.266,"f":false},{"x":0.472,"y":0.36,"f":false},{"x":1.065,"y":-1.749,"f":false},{"x":0.915,"y":1.627,"f":false},{"x":-0.516,"y":1.318,"f":false},{"x":1.3,"y":0.307,"f":false},{"x":0.32,"y":0.373,"f":false},{"x":1.451,"y":-1.063,"f":false},{"x":-1.444,"y":1.349,"f":false},{"x":-0.709,"y":0.087,"f":false},{"x":-1.166,"y":1.603,"f":false},{"x":1.023,"y":0.879,"f":false},{"x":-1.606,"y":-0.228,"f":false},{"x":1.178,"y":1.609,"f":false},{"x":-2.162,"y":-1.364,"f":false},{"x":0.743,"y":1.9,"f":false},{"x":0.808,"y":-1.994,"f":false},{"x":-0.205,"y":0.316,"f":false},{"x":0.043,"y":0.938,"f":false},{"x":-0.666,"y":0.716,"f":false},{"x":0.842,"y":1.73,"f":false},{"x":-2.431,"y":-0.318,"f":false},{"x":1.265,"y":-2.083,"f":false},{"x":1.292,"y":-0.361,"f":false},{"x":-2.279,"y":1.005,"f":false},{"x":0.57,"y":1.839,"f":false},{"x":-2.126,"y":-1.371,"f":false},{"x":-0.616,"y":-2.578,"f":false},{"x":-2.39,"y":1.475,"f":false},{"x":-2.611,"y":-0.381,"f":false},{"x":1.138,"y":-1.439,"f":false},{"x":-1.009,"y":1.434,"f":false},{"x":-0.456,"y":0.503,"f":false},{"x":1.273,"y":-1.895,"f":false},{"x":-1.592,"y":1.354,"f":false},{"x":0.504,"y":1.682,"f":false},{"x":1.254,"y":-2.501,"f":false},{"x":-3.097,"y":0.68,"f":false},{"x":-1.673,"y":1.322,"f":false},{"x":1.553,"y":0.237,"f":false},{"x":-1.935,"y":-1.291,"f":false},{"x":0.204,"y":1.512,"f":false},{"x":1.026,"y":0.787,"f":false},{"x":1.044,"y":0.4,"f":false},{"x":-0.652,"y":2.062,"f":false},{"x":-1.125,"y":-0.002,"f":false},{"x":-0.603,"y":0.723,"f":false},{"x":-2.839,"y":-2.771,"f":false},{"x":1.528,"y":-1.418,"f":false},{"x":1.065,"y":0.675,"f":false},{"x":3.231,"y":-2.277,"f":false},{"x":1.675,"y":0.149,"f":false},{"x":1.154,"y":0.242,"f":false},{"x":-1.607,"y":1.223,"f":false},{"x":-0.63,"y":-0.343,"f":false},{"x":-0.849,"y":0.015,"f":false},{"x":-2.547,"y":-1.122,"f":false},{"x":1.597,"y":-1.241,"f":false},{"x":-0.705,"y":1.15,"f":false},{"x":0.117,"y":-1.905,"f":false},{"x":0.665,"y":-0.821,"f":false},{"x":1.918,"y":-1.835,"f":false},{"x":-0.109,"y":-0.274,"f":false},{"x":2.397,"y":-1.714,"f":false},{"x":1.281,"y":-2.107,"f":false},{"x":-1.98,"y":-1.334,"f":false},{"x":1.12,"y":0.061,"f":false},{"x":0.57,"y":1.646,"f":false},{"x":-3.406,"y":-0.409,"f":false},{"x":-0.645,"y":-1.085,"f":false},{"x":1.142,"y":1.41,"f":false},{"x":0.508,"y":-0.078,"f":false},{"x":1.601,"y":-0.328,"f":false},{"x":-0.185,"y":-1.951,"f":false},{"x":0.164,"y":0.669,"f":false},{"x":-1.413,"y":1.064,"f":false},{"x":0.477,"y":0.779,"f":false},{"x":1.256,"y":-1.694,"f":false},{"x":-1.148,"y":1.72,"f":false},{"x":1.699,"y":-1.625,"f":false},{"x":0.38,"y":-2.264,"f":false},{"x":1.579,"y":1.674,"f":false},{"x":1.237,"y":-1.499,"f":false},{"x":0.146,"y":-0.219,"f":false},{"x":0.856,"y":0.03,"f":false},{"x":0.107,"y":0.967,"f":false},{"x":0.522,"y":-0.961,"f":false},{"x":0.07,"y":-2.005,"f":false},{"x":-0.851,"y":0.618,"f":false},{"x":-1.392,"y":0.641,"f":false},{"x":1.549,"y":-0.576,"f":false},{"x":-2.647,"y":2.289,"f":false},{"x":-1.322,"y":1.826,"f":false},{"x":1.505,"y":-1.082,"f":false},{"x":2.083,"y":-1.698,"f":false},{"x":-0.225,"y":-0.343,"f":false},{"x":1.241,"y":0.749,"f":false},{"x":0.875,"y":-1.775,"f":false},{"x":0.538,"y":-3.204,"f":false},{"x":-4.051,"y":1.004,"f":false},{"x":1.307,"y":0.462,"f":false},{"x":-4.531,"y":-1.154,"f":false},{"x":-1.942,"y":-2.951,"f":false},{"x":1.998,"y":-0.904,"f":false},{"x":1.792,"y":0.227,"f":false},{"x":0.504,"y":0.215,"f":false},{"x":0.747,"y":0.564,"f":false},{"x":0.311,"y":0.053,"f":false},{"x":-2.79,"y":-2.498,"f":false},{"x":-0.188,"y":-2.144,"f":false},{"x":0.775,"y":-2.186,"f":false},{"x":-0.301,"y":1.796,"f":false},{"x":-1.375,"y":0.675,"f":false},{"x":0.239,"y":-0.937,"f":false},{"x":1.589,"y":-1.655,"f":false},{"x":1.924,"y":0.24,"f":false},{"x":-0.639,"y":-1.683,"f":false},{"x":0.292,"y":1.051,"f":false},{"x":1.664,"y":0.318,"f":false},{"x":-1.035,"y":0.649,"f":false},{"x":-2.543,"y":-1.448,"f":false},{"x":0.253,"y":-3.114,"f":false},{"x":0.765,"y":-0.726,"f":false},{"x":0.444,"y":1.488,"f":false},{"x":-0.647,"y":-0.624,"f":false},{"x":-1.428,"y":-0.654,"f":false},{"x":-1.904,"y":-0.052,"f":false},{"x":0.795,"y":-0.976,"f":false},{"x":-0.166,"y":1.329,"f":false},{"x":1.197,"y":0.301,"f":false},{"x":1.232,"y":-0.412,"f":false},{"x":0.076,"y":-2.846,"f":false},{"x":-1.02,"y":-0.145,"f":false},{"x":1.43,"y":0.04,"f":false},{"x":2.294,"y":-0.857,"f":false},{"x":-0.372,"y":-0.265,"f":false},{"x":1.221,"y":-0.575,"f":false},{"x":-0.002,"y":0.074,"f":false},{"x":-3.926,"y":0.146,"f":false},{"x":1.622,"y":-1.39,"f":false},{"x":-1.335,"y":1.061,"f":false},{"x":0.086,"y":-1.479,"f":false},{"x":0.716,"y":-0.22,"f":false},{"x":-0.726,"y":-1.541,"f":false},{"x":-0.003,"y":-1.403,"f":false},{"x":1.296,"y":-0.034,"f":false},{"x":0.836,"y":-0.936,"f":false},{"x":0.669,"y":-1.182,"f":false},{"x":-2.048,"y":1.202,"f":false},{"x":-0.175,"y":1.939,"f":false},{"x":-0.936,"y":-0.701,"f":false},{"x":1.11,"y":0.869,"f":false},{"x":1.664,"y":1.59,"f":false},{"x":0.741,"y":1.698,"f":false},{"x":1.215,"y":-1.453,"f":false},{"x":-1.135,"y":1.274,"f":false},{"x":-0.281,"y":-1.931,"f":false},{"x":1.477,"y":-1.803,"f":false},{"x":1.974,"y":-0.786,"f":false},{"x":1.453,"y":-0.555,"f":false},{"x":1.051,"y":-1.375,"f":false},{"x":-0.833,"y":0.699,"f":false},{"x":0.239,"y":-1.843,"f":false},{"x":-2.201,"y":0.932,"f":false},{"x":0.941,"y":1.334,"f":false},{"x":1.221,"y":-1.351,"f":false},{"x":-1.689,"y":-1.038,"f":false},{"x":1.14,"y":0.295,"f":false},{"x":0.888,"y":-0.858,"f":false},{"x":0.277,"y":0.998,"f":false},{"x":0.167,"y":0.565,"f":false},{"x":2.187,"y":-0.92,"f":false},{"x":0.742,"y":1.851,"f":false},{"x":-2.181,"y":0.5,"f":false},{"x":-0.344,"y":0.749,"f":false},{"x":-1.82,"y":0.299,"f":false},{"x":-3.338,"y":-0.791,"f":false},{"x":1.464,"y":1.251,"f":false},{"x":1.718,"y":0.613,"f":false},{"x":0.98,"y":1.46,"f":false},{"x":-4.744,"y":0.974,"f":false},{"x":-1.521,"y":0.401,"f":false},{"x":-0.217,"y":1.198,"f":false},{"x":1.332,"y":0.2,"f":false},{"x":-0.472,"y":1.583,"f":false},{"x":0.466,"y":-2.094,"f":false},{"x":-0.602,"y":-2.3,"f":false},{"x":0.687,"y":-0.246,"f":false},{"x":-0.339,"y":-0.173,"f":false},{"x":0.961,"y":0.405,"f":false},{"x":2.033,"y":0.716,"f":false},{"x":1.412,"y":-1.705,"f":false},{"x":1.646,"y":0.257,"f":false},{"x":-4.704,"y":-0.09,"f":false},{"x":0.234,"y":-0.411,"f":false},{"x":-1.318,"y":1.25,"f":false},{"x":-4.202,"y":2.005,"f":false},{"x":1.258,"y":-0.762,"f":false},{"x":0.81,"y":1.06,"f":false},{"x":0.632,"y":0.055,"f":false},{"x":1.251,"y":-0.259,"f":false},{"x":1.103,"y":-1.555,"f":false},{"x":-1.864,"y":0.385,"f":false},{"x":0.282,"y":1.492,"f":false},{"x":0.738,"y":1.808,"f":false},{"x":1.273,"y":-1.067,"f":false},{"x":0.294,"y":0.65,"f":false},{"x":0.587,"y":1.527,"f":false},{"x":-1.56,"y":0.378,"f":false},{"x":0.818,"y":-2.059,"f":false},{"x":0.975,"y":1.675,"f":false},{"x":-0.859,"y":2.06,"f":false},{"x":0.544,"y":0.466,"f":false},{"x":-1.308,"y":0.654,"f":false},{"x":0.332,"y":-0.699,"f":false},{"x":-0.267,"y":1.07,"f":false},{"x":-1.295,"y":-2.164,"f":false},{"x":-0.099,"y":-0.253,"f":false},{"x":-2.069,"y":-1.118,"f":false},{"x":-0.516,"y":0.281,"f":false},{"x":1.704,"y":-0.512,"f":false},{"x":0.663,"y":-1.028,"f":false},{"x":-2.409,"y":1.331,"f":false},{"x":0.674,"y":1.287,"f":false},{"x":0.414,"y":1.883,"f":false},{"x":-0.014,"y":-0.636,"f":false},{"x":0.794,"y":1.87,"f":false},{"x":0.834,"y":-0.808,"f":false},{"x":-2.128,"y":-0.231,"f":false},{"x":2.216,"y":-0.586,"f":false},{"x":0.303,"y":1.404,"f":false},{"x":-0.953,"y":1.672,"f":false},{"x":1.31,"y":-0.758,"f":false},{"x":0.568,"y":0.643,"f":false},{"x":-0.403,"y":2.075,"f":false},{"x":-1.237,"y":-0.131,"f":false},{"x":0.665,"y":-3.3,"f":false},{"x":0.56,"y":0.847,"f":false},{"x":1.456,"y":0.817,"f":false},{"x":-1.321,"y":1.882,"f":false},{"x":-0.72,"y":-1.011,"f":false},{"x":-4.657,"y":0.85,"f":false},{"x":1.323,"y":-1.729,"f":false},{"x":1.4,"y":0.78,"f":false},{"x":-2.672,"y":0.207,"f":false},{"x":-0.865,"y":-0.803,"f":false},{"x":-2.377,"y":0.602,"f":false},{"x":0.657,"y":1.594,"f":false},{"x":-0.432,"y":-1.802,"f":false},{"x":-0.042,"y":-0.627,"f":false},{"x":1.837,"y":-1.01,"f":false},{"x":0.065,"y":-2.339,"f":false},{"x":0.006,"y":0.863,"f":false},{"x":1.373,"y":0.83,"f":false},{"x":1.267,"y":-0.599,"f":false},{"x":-0.149,"y":0.838,"f":false},{"x":0.791,"y":-0.143,"f":false},{"x":-0.101,"y":2.005,"f":false},{"x":1.031,"y":0.419,"f":false},{"x":0.474,"y":1.117,"f":false},{"x":-0.949,"y":1.774,"f":false},{"x":-0.389,"y":0.11,"f":false},{"x":-0.813,"y":0.253,"f":false},{"x":2.186,"y":-2.037,"f":false},{"x":1.638,"y":1.558,"f":false},{"x":-4.99,"y":-1.228,"f":false},{"x":0.993,"y":-0.369,"f":false},{"x":2.289,"y":-0.087,"f":false},{"x":0.84,"y":0.763,"f":false},{"x":-0.515,"y":0.557,"f":false},{"x":1.392,"y":0.142,"f":false},{"x":1.365,"y":-2.041,"f":false},{"x":0.899,"y":-1.899,"f":false},{"x":0.027,"y":1.655,"f":false},{"x":-0.284,"y":1.861,"f":false},{"x":1.167,"y":-2.002,"f":false},{"x":0.349,"y":1.61,"f":false},{"x":1.124,"y":0.423,"f":false},{"x":2.191,"y":0.248,"f":false},{"x":-0.762,"y":-2.304,"f":false},{"x":-0.971,"y":1.836,"f":false},{"x":-1.231,"y":0.901,"f":false},{"x":1.42,"y":0.23,"f":false},{"x":-2.682,"y":-2.75,"f":false},{"x":0.967,"y":1.206,"f":false},{"x":-1.82,"y":1.744,"f":false},{"x":0.716,"y":-0.449,"f":false},{"x":-0.216,"y":0.338,"f":false},{"x":0.654,"y":0.586,"f":false},{"x":0.901,"y":1.464,"f":false},{"x":0.429,"y":1.273,"f":false},{"x":0.309,"y":-1.533,"f":false},{"x":-0.101,"y":0.684,"f":false},{"x":0.699,"y":0.486,"f":false},{"x":-0.508,"y":1.209,"f":false},{"x":-1.348,"y":0.899,"f":false},{"x":0.095,"y":-0.984,"f":false},{"x":0.193,"y":-0.402,"f":false},{"x":2.106,"y":1.54,"f":false},{"x":1.322,"y":-0.213,"f":false},{"x":-1.21,"y":1.501,"f":false},{"x":1.019,"y":1.434,"f":false},{"x":1.297,"y":-1.567,"f":false},{"x":2.048,"y":-0.89,"f":false},{"x":-1.511,"y":1.843,"f":false},{"x":-0.07,"y":0.551,"f":false},{"x":-0.124,"y":1.365,"f":false},{"x":0.574,"y":1.164,"f":false},{"x":0.281,"y":-0.493,"f":false},{"x":0.543,"y":1.871,"f":false},{"x":-0.209,"y":1.708,"f":false},{"x":1.589,"y":-0.303,"f":false},{"x":1.919,"y":-0.019,"f":false},{"x":0.769,"y":-1.463,"f":false},{"x":0.495,"y":-0.316,"f":false},{"x":1.36,"y":0.454,"f":false},{"x":-0.063,"y":1.297,"f":false},{"x":-0.767,"y":0.992,"f":false},{"x":2.194,"y":-1.948,"f":false},{"x":0.509,"y":1.534,"f":false},{"x":0.329,"y":-0.036,"f":false},{"x":1.669,"y":-0.119,"f":false},{"x":0.371,"y":1.205,"f":false},{"x":0.455,"y":-2.376,"f":false},{"x":0.443,"y":-0.02,"f":false},{"x":1.391,"y":-0.979,"f":false},{"x":-0.064,"y":1.824,"f":false},{"x":3.04,"y":-2.319,"f":false},{"x":-2.167,"y":-0.329,"f":false},{"x":-0.02,"y":2.001,"f":false},{"x":-1.749,"y":1.665,"f":false},{"x":1.085,"y":-1.948,"f":false},{"x":2.083,"y":-1.787,"f":false},{"x":0.106,"y":1.953,"f":false},{"x":1.126,"y":-0.062,"f":false},{"x":0.74,"y":0.842,"f":false},{"x":1.225,"y":1.664,"f":false},{"x":0.936,"y":-0.061,"f":false},{"x":-4.247,"y":0.84,"f":false},{"x":-0.301,"y":-2.075,"f":false},{"x":1.187,"y":1.899,"f":false},{"x":-1.351,"y":-1.193,"f":false},{"x":0.474,"y":0.873,"f":false},{"x":0.78,"y":-1.265,"f":false},{"x":-1.147,"y":0.927,"f":false},{"x":0.469,"y":-0.111,"f":false},{"x":-0.114,"y":0.87,"f":false},{"x":-0.622,"y":2.077,"f":false},{"x":0.728,"y":-0.233,"f":false},{"x":1.596,"y":-1.902,"f":false},{"x":1.455,"y":0.339,"f":false},{"x":1.547,"y":1.603,"f":false},{"x":0.957,"y":1.576,"f":false},{"x":-0.672,"y":1.781,"f":false},{"x":-0.066,"y":1.837,"f":false},{"x":1.354,"y":0.159,"f":false},{"x":1.647,"y":-0.031,"f":false},{"x":-1.61,"y":1.812,"f":false},{"x":0.562,"y":-0.518,"f":false},{"x":-4.356,"y":1.052,"f":false},{"x":0.053,"y":1.36,"f":false},{"x":1.702,"y":-2.856,"f":false},{"x":0.008,"y":1.588,"f":false},{"x":0.728,"y":0.844,"f":false},{"x":1.37,"y":-0.151,"f":false},{"x":-0.62,"y":-0.501,"f":false},{"x":-1.515,"y":0.262,"f":false},{"x":-0.975,"y":1.862,"f":false},{"x":1.12,"y":0.739,"f":false},{"x":0.784,"y":1.822,"f":false},{"x":1.525,"y":0.513,"f":false},{"x":1.54,"y":-0.005,"f":false},{"x":0.15,"y":2.078,"f":false},{"x":0.761,"y":1.667,"f":false},{"x":-0.966,"y":0.497,"f":false},{"x":-1.263,"y":1.058,"f":false},{"x":-1.114,"y":-2.492,"f":false},{"x":-9.15,"y":-2.299,"f":false},{"x":1.382,"y":0.188,"f":false},{"x":-0.589,"y":-0.556,"f":false},{"x":1.376,"y":-1.096,"f":false},{"x":1.117,"y":0.899,"f":false},{"x":0.524,"y":1.381,"f":false},{"x":1.037,"y":1.767,"f":false},{"x":0.692,"y":-0.491,"f":false},{"x":-0.13,"y":1.611,"f":false},{"x":0.95,"y":-0.057,"f":false},{"x":-0.139,"y":-1.177,"f":false},{"x":-0.196,"y":2.069,"f":false},{"x":-4.874,"y":-0.96,"f":false},{"x":0.418,"y":0.772,"f":false},{"x":0.457,"y":1.158,"f":false},{"x":1.005,"y":-1.7,"f":false},{"x":0.658,"y":1.721,"f":false},{"x":-2.141,"y":-3.094,"f":false},{"x":-0.694,"y":1.203,"f":false},{"x":-0.599,"y":0.616,"f":false},{"x":0.599,"y":0.068,"f":false},{"x":0.762,"y":0.659,"f":false},{"x":0.097,"y":1.743,"f":false},{"x":-1.987,"y":-2.684,"f":false},{"x":0.301,"y":1.34,"f":false},{"x":1.632,"y":-1.201,"f":false},{"x":0.556,"y":0.938,"f":false},{"x":-3.536,"y":-0.34,"f":false},{"x":0.719,"y":0.245,"f":false},{"x":-0.711,"y":1.723,"f":false},{"x":-0.398,"y":-2.037,"f":false},{"x":0.435,"y":-1.589,"f":false},{"x":0.722,"y":-0.027,"f":false},{"x":0.064,"y":-0.037,"f":false},{"x":0.404,"y":0.54,"f":false},{"x":-0.369,"y":-1.201,"f":false},{"x":0.871,"y":-0.593,"f":false},{"x":1.599,"y":-0.303,"f":false},{"x":0.103,"y":-0.418,"f":false},{"x":-1.027,"y":1.339,"f":false},{"x":1.786,"y":-0.979,"f":false},{"x":0.072,"y":0.893,"f":false},{"x":-0.079,"y":0.781,"f":false},{"x":-1.957,"y":-0.208,"f":false},{"x":1.33,"y":-2.392,"f":false},{"x":-1.04,"y":-1.816,"f":false},{"x":-2.731,"y":0.725,"f":false},{"x":0.688,"y":1.18,"f":false},{"x":-0.661,"y":-0.901,"f":false},{"x":2.106,"y":1.54,"f":false},{"x":-1.496,"y":1.117,"f":false},{"x":1.601,"y":-0.93,"f":false},{"x":0.996,"y":0.31,"f":false},{"x":0.256,"y":-0.683,"f":false},{"x":-0.949,"y":1.414,"f":false},{"x":1.468,"y":1.537,"f":false},{"x":-2.023,"y":0.511,"f":false},{"x":0.215,"y":-2.948,"f":false},{"x":-7.382,"y":-0.287,"f":false},{"x":-1.932,"y":1.904,"f":false},{"x":-0.642,"y":1.385,"f":false},{"x":1.092,"y":0.436,"f":false},{"x":-0.161,"y":1.057,"f":false},{"x":0.561,"y":1.878,"f":false},{"x":1.402,"y":-0.775,"f":false},{"x":-2.311,"y":-0.33,"f":false},{"x":-0.034,"y":-0.1,"f":false},{"x":0.548,"y":-0.218,"f":false},{"x":1.763,"y":0.086,"f":false},{"x":-0.335,"y":0.908,"f":false},{"x":-0.883,"y":0.853,"f":false},{"x":0.761,"y":-1.932,"f":false},{"x":0.927,"y":0.923,"f":false},{"x":-0.028,"y":-1.725,"f":false},{"x":-4.904,"y":1.308,"f":false},{"x":0.996,"y":-0.31,"f":false},{"x":-3.072,"y":1.1,"f":false},{"x":-1.041,"y":-2.802,"f":false},{"x":-0.419,"y":1.893,"f":false},{"x":0.818,"y":-0.443,"f":false},{"x":1.289,"y":-0.561,"f":false},{"x":2.34,"y":-1.561,"f":false},{"x":0.525,"y":-0.196,"f":false},{"x":-0.516,"y":-0.354,"f":false},{"x":0.516,"y":-1.788,"f":false},{"x":-0.744,"y":2.054,"f":false},{"x":1.241,"y":0.291,"f":false},{"x":0.621,"y":1.192,"f":false},{"x":2.297,"y":-1.694,"f":false},{"x":-0.411,"y":-1.426,"f":false},{"x":0.367,"y":-0.136,"f":false},{"x":-2.028,"y":-0.047,"f":false},{"x":0.529,"y":-2.384,"f":false},{"x":-0.18,"y":-2.042,"f":false},{"x":-1.391,"y":0.871,"f":false},{"x":-0.141,"y":0.95,"f":false},{"x":0.444,"y":0.463,"f":false},{"x":1.207,"y":-0.519,"f":false},{"x":0.697,"y":1.882,"f":false},{"x":0.634,"y":1.659,"f":false},{"x":0.851,"y":0.428,"f":false},{"x":0.125,"y":-2.913,"f":false},{"x":0.505,"y":1.193,"f":false},{"x":-2.356,"y":0.061,"f":false},{"x":1.013,"y":1.287,"f":false},{"x":0.011,"y":0.75,"f":false},{"x":-2.226,"y":-2.746,"f":false},{"x":-0.604,"y":0.855,"f":false},{"x":0.538,"y":1.419,"f":false},{"x":-0.148,"y":0.052,"f":false},{"x":-3.771,"y":0.793,"f":false},{"x":-0.901,"y":-0.014,"f":false},{"x":-0.51,"y":1.337,"f":false},{"x":-1.239,"y":1.93,"f":false},{"x":1.462,"y":0.005,"f":false},{"x":-1.274,"y":1.016,"f":false},{"x":-1.58,"y":0.672,"f":false},{"x":-3.576,"y":0.914,"f":false},{"x":0.681,"y":1.496,"f":false},{"x":1.235,"y":-0.021,"f":false},{"x":0.476,"y":1.112,"f":false},{"x":1.825,"y":0.328,"f":false},{"x":1.051,"y":0.583,"f":false},{"x":1.305,"y":-1.958,"f":false},{"x":-0.567,"y":-0.119,"f":false},{"x":-2.562,"y":-0.36,"f":false},{"x":-1.683,"y":0.655,"f":false},{"x":1.835,"y":-1.624,"f":false},{"x":2.294,"y":0.043,"f":false},{"x":-0.13,"y":0.184,"f":false},{"x":0.897,"y":0.756,"f":false},{"x":1.227,"y":0.147,"f":false},{"x":-0.104,"y":0.538,"f":false},{"x":-1.473,"y":0.963,"f":false},{"x":0.146,"y":0.34,"f":false},{"x":1.271,"y":0.703,"f":false},{"x":-0.205,"y":0.35,"f":false},{"x":0.704,"y":1.33,"f":false},{"x":-2.719,"y":1.187,"f":false},{"x":0.784,"y":0.711,"f":false},{"x":-2.536,"y":2.423,"f":false},{"x":-0.246,"y":0.898,"f":false},{"x":0.521,"y":1.027,"f":false},{"x":-1.625,"y":1.752,"f":false},{"x":-3.007,"y":1.545,"f":false},{"x":2.037,"y":0.388,"f":false},{"x":1.875,"y":-2.031,"f":false},{"x":-2.769,"y":-0.979,"f":false},{"x":-1.01,"y":-0.022,"f":false},{"x":0.023,"y":0.797,"f":false},{"x":-0.177,"y":0.561,"f":false},{"x":-0.903,"y":0.797,"f":false},{"x":0.088,"y":-1.155,"f":false},{"x":0.735,"y":1.915,"f":false},{"x":-0.507,"y":1.394,"f":false},{"x":0.207,"y":-1.658,"f":false},{"x":-2.237,"y":-0.079,"f":false},{"x":0.806,"y":-1.895,"f":false},{"x":0.232,"y":-1.566,"f":false},{"x":-0.244,"y":-0.095,"f":false},{"x":-2.093,"y":-3.702,"f":false},{"x":0.562,"y":1.327,"f":false},{"x":0.613,"y":0.39,"f":false},{"x":1.243,"y":0.038,"f":false},{"x":1.513,"y":-0.398,"f":false},{"x":1.083,"y":1.026,"f":false},{"x":-0.18,"y":0.619,"f":false},{"x":1.445,"y":1.499,"f":false},{"x":0.775,"y":0.364,"f":false},{"x":0.311,"y":0.285,"f":false},{"x":-0.717,"y":-0.677,"f":false},{"x":1.07,"y":-1.117,"f":false},{"x":-0.802,"y":-0.353,"f":false},{"x":-0.217,"y":1.083,"f":false},{"x":0.825,"y":0.523,"f":false},{"x":0.736,"y":0.973,"f":false},{"x":-0.045,"y":1.291,"f":false},{"x":-1.179,"y":-3.182,"f":false},{"x":1.005,"y":-1.043,"f":false},{"x":-2.621,"y":-1.215,"f":false},{"x":-1.459,"y":1.517,"f":false},{"x":-0.781,"y":-2.464,"f":false},{"x":0.388,"y":1.959,"f":false},{"x":1.923,"y":-0.585,"f":false},{"x":1.428,"y":0.392,"f":false},{"x":1.029,"y":-0.18,"f":false},{"x":-1.733,"y":-3.397,"f":false},{"x":-0.049,"y":1.076,"f":false},{"x":2.218,"y":-0.335,"f":false},{"x":1.392,"y":-0.582,"f":false},{"x":1.68,"y":-0.531,"f":false},{"x":1.458,"y":-2.358,"f":false},{"x":0.928,"y":0.132,"f":false},{"x":0.969,"y":-2.376,"f":false},{"x":0.76,"y":-2.659,"f":false},{"x":-1.285,"y":0.735,"f":false},{"x":1.519,"y":0.155,"f":false},{"x":0.19,"y":-0.039,"f":false},{"x":-0.412,"y":-0.178,"f":false},{"x":1.309,"y":-0.135,"f":false},{"x":-0.329,"y":-2.434,"f":false},{"x":0.097,"y":0.296,"f":false},{"x":2.055,"y":-0.347,"f":false},{"x":-0.246,"y":0.763,"f":false},{"x":0.16,"y":0.684,"f":false},{"x":-6.564,"y":0.051,"f":false},{"x":1.066,"y":-0.765,"f":false},{"x":-0.358,"y":2.12,"f":false},{"x":-0.234,"y":1.621,"f":false},{"x":2.502,"y":-1.824,"f":false},{"x":-1.147,"y":-0.309,"f":false},{"x":1.057,"y":-0.782,"f":false},{"x":-0.336,"y":0.943,"f":false},{"x":-1.748,"y":0.793,"f":false},{"x":-0.755,"y":0.909,"f":false},{"x":-0.03,"y":0.375,"f":false},{"x":1.491,"y":-0.644,"f":false},{"x":-4.722,"y":1.065,"f":false},{"x":0.384,"y":1.663,"f":false},{"x":-0.998,"y":1.05,"f":false},{"x":-1.492,"y":0.957,"f":false},{"x":-1.229,"y":0.129,"f":false},{"x":-2.99,"y":-2.792,"f":false},{"x":-1.004,"y":-3.337,"f":false},{"x":-0.313,"y":-0.701,"f":false},{"x":0.505,"y":0.292,"f":false},{"x":-0.249,"y":-0.516,"f":false},{"x":0.682,"y":0.896,"f":false},{"x":1.029,"y":1.406,"f":false},{"x":0.509,"y":-1.82,"f":false},{"x":-1.036,"y":0.595,"f":false},{"x":0.108,"y":1.426,"f":false},{"x":2.366,"y":0.205,"f":false},{"x":1.441,"y":1.598,"f":false},{"x":0.955,"y":0.039,"f":false},{"x":-0.239,"y":-1.095,"f":false},{"x":1.552,"y":-1.975,"f":false},{"x":-5.242,"y":1.212,"f":false},{"x":-1.645,"y":0.038,"f":false},{"x":0.084,"y":0.351,"f":false},{"x":0.289,"y":-0.023,"f":false},{"x":-0.751,"y":1.328,"f":false},{"x":-4.152,"y":0.474,"f":false},{"x":-1.854,"y":1.699,"f":false},{"x":-1.393,"y":0.629,"f":false},{"x":-1.495,"y":-1.067,"f":false},{"x":-4.118,"y":-4.014,"f":false},{"x":-0.868,"y":-1.159,"f":false},{"x":-0.12,"y":0.113,"f":false},{"x":-1.385,"y":0.775,"f":false},{"x":-1.176,"y":-0.684,"f":false},{"x":-0.882,"y":0.769,"f":false},{"x":-1.946,"y":1.006,"f":false},{"x":-0.202,"y":0.124,"f":false},{"x":1.385,"y":0.411,"f":false},{"x":0.823,"y":0.274,"f":false},{"x":0.65,"y":1.773,"f":false},{"x":-2.01,"y":-1.408,"f":false},{"x":0.514,"y":0.797,"f":false},{"x":1.407,"y":1.144,"f":false},{"x":0.932,"y":-2.157,"f":false},{"x":-0.127,"y":0.808,"f":false},{"x":-0.264,"y":0.101,"f":false},{"x":-0.207,"y":-0.466,"f":false},{"x":1.785,"y":0.189,"f":false},{"x":-0.753,"y":0.927,"f":false},{"x":-0.759,"y":2.085,"f":false},{"x":0.59,"y":0.483,"f":false},{"x":1.773,"y":0.402,"f":false},{"x":0.198,"y":-0.044,"f":false},{"x":-2.38,"y":0.277,"f":false},{"x":-1.694,"y":-1.825,"f":false},{"x":0.445,"y":-0.719,"f":false},{"x":1.403,"y":0.898,"f":false},{"x":-0.224,"y":0.597,"f":false},{"x":0.957,"y":0.916,"f":false},{"x":0.314,"y":1.813,"f":false},{"x":0.296,"y":0.238,"f":false},{"x":-0.558,"y":0.291,"f":false},{"x":-0.05,"y":0.559,"f":false},{"x":0.552,"y":-1.96,"f":false},{"x":-0.088,"y":-4.562,"f":false},{"x":-2.647,"y":0.564,"f":false},{"x":2.008,"y":-0.266,"f":false},{"x":2.194,"y":-1.274,"f":false},{"x":1.018,"y":0.433,"f":false},{"x":1.598,"y":-0.352,"f":false},{"x":1.995,"y":0.263,"f":false},{"x":0.039,"y":-1.864,"f":false},{"x":2.499,"y":-2.51,"f":false},{"x":0.85,"y":0.816,"f":false},{"x":0.669,"y":0.677,"f":false},{"x":0.457,"y":1.047,"f":false},{"x":1.944,"y":-1.796,"f":false},{"x":1.556,"y":-2.838,"f":false},{"x":0.01,"y":-0.113,"f":false},{"x":1.02,"y":1.052,"f":false},{"x":1.101,"y":-0.562,"f":false},{"x":1.039,"y":0.896,"f":false},{"x":-1.058,"y":0.251,"f":false},{"x":-5.062,"y":-1.301,"f":false},{"x":-1.15,"y":-0.254,"f":false},{"x":-0.208,"y":0.737,"f":false},{"x":1.489,"y":0.542,"f":false},{"x":-4.411,"y":-3.914,"f":false},{"x":0.007,"y":-0.226,"f":false},{"x":1.263,"y":-0.287,"f":false},{"x":0.506,"y":1.814,"f":false},{"x":1.139,"y":0.045,"f":false},{"x":-0.078,"y":0.725,"f":false},{"x":-1.865,"y":-1.762,"f":false},{"x":-0.24,"y":1.609,"f":false},{"x":1.386,"y":0.917,"f":false},{"x":-1.16,"y":0.872,"f":false},{"x":0.3,"y":0.472,"f":false},{"x":-2.892,"y":0.89,"f":false},{"x":1.04,"y":-0.332,"f":false},{"x":1.841,"y":-1.602,"f":false},{"x":-0.779,"y":1.683,"f":false},{"x":1.333,"y":-0.206,"f":false},{"x":-1.347,"y":0.207,"f":false},{"x":-0.291,"y":0.509,"f":false},{"x":-0.989,"y":1.179,"f":false},{"x":-2.675,"y":-0.726,"f":false},{"x":1.4,"y":0.759,"f":false},{"x":-2.783,"y":1.339,"f":false},{"x":-4.055,"y":-0.293,"f":false},{"x":1.133,"y":-0.44,"f":false},{"x":0.321,"y":1.827,"f":false},{"x":0.488,"y":0.263,"f":false},{"x":1.916,"y":-0.472,"f":false},{"x":2.505,"y":-1.79,"f":false},{"x":-1.638,"y":-2.773,"f":false},{"x":-0.22,"y":-1.527,"f":false},{"x":-2.743,"y":-1.133,"f":false},{"x":-0.388,"y":0.317,"f":false},{"x":-0.149,"y":-1.33,"f":false},{"x":1.276,"y":-0.297,"f":false},{"x":0.545,"y":0.809,"f":false},{"x":-1.948,"y":2.378,"f":false},{"x":-2.42,"y":0.686,"f":false},{"x":1.537,"y":-0.905,"f":false},{"x":0.634,"y":1.768,"f":false},{"x":0.153,"y":0.885,"f":false},{"x":-1.58,"y":1.954,"f":false},{"x":0.633,"y":-0.042,"f":false},{"x":0.741,"y":0.329,"f":false},{"x":0.66,"y":-1.654,"f":false},{"x":1.732,"y":-0.558,"f":false},{"x":0.459,"y":0.657,"f":false},{"x":-2.432,"y":1.823,"f":false},{"x":0.42,"y":-2.138,"f":false},{"x":0.171,"y":1.507,"f":false},{"x":-1.874,"y":-1.627,"f":false},{"x":1.062,"y":0.893,"f":false},{"x":1.823,"y":0.151,"f":false},{"x":1.773,"y":-1.362,"f":false},{"x":1.455,"y":1.601,"f":false},{"x":-4.325,"y":-2.781,"f":false},{"x":1.45,"y":1.624,"f":false},{"x":1.263,"y":-0.176,"f":false},{"x":1.4,"y":0.326,"f":false},{"x":-0.452,"y":0.248,"f":false},{"x":-2.486,"y":0.978,"f":false},{"x":-0.042,"y":1.124,"f":false},{"x":-0.107,"y":0.835,"f":false},{"x":-0.155,"y":2.095,"f":false},{"x":0.464,"y":-0.331,"f":false},{"x":1.405,"y":-0.563,"f":false},{"x":-0.096,"y":-0.339,"f":false},{"x":-0.849,"y":-0.954,"f":false},{"x":0.189,"y":-0.716,"f":false},{"x":1.102,"y":0.159,"f":false},{"x":1.356,"y":-1.591,"f":false},{"x":0.09,"y":-2.288,"f":false},{"x":-0.319,"y":1.078,"f":false},{"x":0.704,"y":1.882,"f":false},{"x":0.679,"y":0.481,"f":false},{"x":-0.157,"y":0.35,"f":false},{"x":-0.077,"y":1.212,"f":false},{"x":1.895,"y":0.479,"f":false},{"x":0.546,"y":-0.05,"f":false},{"x":-0.134,"y":-0.078,"f":false},{"x":-0.068,"y":1.957,"f":false},{"x":-0.959,"y":-0.465,"f":false},{"x":0.434,"y":-0.061,"f":false},{"x":-0.569,"y":0.184,"f":false},{"x":-0.461,"y":-2.064,"f":false},{"x":2.393,"y":-1.747,"f":false},{"x":1.545,"y":0.368,"f":false},{"x":-0.491,"y":-0.209,"f":false},{"x":0.268,"y":1.012,"f":false},{"x":0.8,"y":1.634,"f":false},{"x":-1.459,"y":0.375,"f":false},{"x":1.322,"y":0.371,"f":false},{"x":1.485,"y":0.119,"f":false},{"x":0.368,"y":1.368,"f":false},{"x":0.254,"y":1.598,"f":false},{"x":2.173,"y":-1.558,"f":false},{"x":-2.97,"y":-0.42,"f":false},{"x":-0.819,"y":-0.552,"f":false},{"x":-4.437,"y":-1.065,"f":false},{"x":1.237,"y":0.027,"f":false},{"x":2.349,"y":-2.278,"f":false},{"x":-1.13,"y":0.395,"f":false},{"x":-4.645,"y":-1.46,"f":false},{"x":0.338,"y":1.843,"f":false},{"x":0.864,"y":-0.851,"f":false},{"x":0.951,"y":2.239,"f":false},{"x":-0.247,"y":0.612,"f":false},{"x":-0.729,"y":-0.696,"f":false},{"x":0.737,"y":1.674,"f":false},{"x":3.018,"y":-2.288,"f":false},{"x":0.125,"y":1.703,"f":false},{"x":1.053,"y":0.874,"f":false},{"x":0.865,"y":-0.317,"f":false},{"x":2.254,"y":-1.741,"f":false},{"x":1.376,"y":-1.664,"f":false},{"x":-0.143,"y":0.049,"f":false},{"x":-2.529,"y":0.881,"f":false},{"x":0.718,"y":-0.331,"f":false},{"x":0.325,"y":-0.316,"f":false},{"x":-3.734,"y":-0.758,"f":false},{"x":0.869,"y":1.947,"f":false},{"x":1.859,"y":1.087,"f":false},{"x":1.732,"y":-0.268,"f":false},{"x":1.277,"y":-1.479,"f":false},{"x":1.069,"y":-0.07,"f":false},{"x":0.252,"y":-1.665,"f":false},{"x":-1.231,"y":1.627,"f":false},{"x":0.71,"y":-0.171,"f":false},{"x":-3.503,"y":-1.213,"f":false},{"x":-0.574,"y":0.915,"f":false},{"x":1.103,"y":-1.567,"f":false},{"x":0.524,"y":-0.191,"f":false},{"x":1.99,"y":-1.728,"f":false},{"x":1.715,"y":0.038,"f":false},{"x":1.689,"y":-0.628,"f":false},{"x":0.304,"y":-0.101,"f":false},{"x":2.246,"y":0.8,"f":false},{"x":0.138,"y":0.507,"f":false},{"x":0.557,"y":-0.279,"f":false},{"x":1.747,"y":0.99,"f":false},{"x":1.646,"y":-0.022,"f":false},{"x":-0.679,"y":-0.941,"f":false},{"x":-2.259,"y":0.983,"f":false},{"x":1.579,"y":-2.377,"f":false},{"x":0.448,"y":-1.489,"f":false},{"x":0.226,"y":-1.469,"f":false},{"x":1.53,"y":1.012,"f":false},{"x":-2.314,"y":-0.578,"f":false},{"x":-1.169,"y":1.761,"f":false},{"x":0.106,"y":1.242,"f":false},{"x":-1.106,"y":1.549,"f":false},{"x":0.657,"y":1.853,"f":false},{"x":-0.339,"y":-2.581,"f":false},{"x":0.465,"y":0.331,"f":false},{"x":0.818,"y":-0.188,"f":false},{"x":1.107,"y":0.255,"f":false},{"x":0.546,"y":-0.983,"f":false},{"x":1.383,"y":1.098,"f":false},{"x":1.378,"y":-0.536,"f":false},{"x":0.298,"y":0.006,"f":false},{"x":1.986,"y":0.308,"f":false},{"x":0.51,"y":1.107,"f":false},{"x":-3.232,"y":-3.528,"f":false},{"x":-1.798,"y":-0.04,"f":false},{"x":-0.195,"y":2.03,"f":false},{"x":-0.075,"y":-2.568,"f":false},{"x":-0.347,"y":1.534,"f":false},{"x":-0.651,"y":-2.297,"f":false},{"x":-0.24,"y":1.233,"f":false},{"x":0.308,"y":-2.453,"f":false},{"x":1.687,"y":1.605,"f":false},{"x":1.042,"y":1.095,"f":false},{"x":-3.187,"y":0.827,"f":false},{"x":-0.822,"y":-0.516,"f":false},{"x":0.426,"y":0.665,"f":false},{"x":0.098,"y":1.286,"f":false},{"x":0.555,"y":1.82,"f":false},{"x":1.564,"y":-1.549,"f":false},{"x":-4.163,"y":0.558,"f":false},{"x":0.289,"y":-0.009,"f":false},{"x":0.504,"y":2.136,"f":false},{"x":1.705,"y":-0.164,"f":false},{"x":1.274,"y":0.005,"f":false},{"x":-4.039,"y":-1.088,"f":false},{"x":0.084,"y":1.325,"f":false},{"x":-2.66,"y":1.192,"f":false},{"x":0.273,"y":-0.599,"f":false},{"x":2.055,"y":-1.516,"f":false},{"x":0.275,"y":-0.134,"f":false},{"x":-0.133,"y":0.171,"f":false},{"x":-0.787,"y":0.792,"f":false},{"x":-0.679,"y":0.193,"f":false},{"x":0.216,"y":-0.443,"f":false},{"x":-1.038,"y":-1.471,"f":false},{"x":-1.164,"y":-0.261,"f":false},{"x":0.981,"y":0.844,"f":false},{"x":-3.127,"y":-0.436,"f":false},{"x":-1.627,"y":-0.078,"f":false},{"x":2.264,"y":-0.059,"f":false},{"x":-0.134,"y":-1.48,"f":false},{"x":-1.197,"y":1.228,"f":false},{"x":1.36,"y":-1.625,"f":false},{"x":2.118,"y":-0.033,"f":false},{"x":1.088,"y":0.397,"f":false},{"x":-0.845,"y":1.057,"f":false},{"x":-0.048,"y":1.973,"f":false},{"x":1.403,"y":-0.882,"f":false},{"x":0.71,"y":-0.083,"f":false},{"x":1.265,"y":0.039,"f":false},{"x":-2.227,"y":1.036,"f":false},{"x":0.151,"y":0.415,"f":false},{"x":-1.495,"y":0.633,"f":false},{"x":0.554,"y":0.288,"f":false},{"x":1.335,"y":-1.583,"f":false},{"x":1.242,"y":-0.149,"f":false},{"x":0.751,"y":0.785,"f":false},{"x":1.842,"y":1.553,"f":false},{"x":0.264,"y":0.343,"f":false},{"x":0.307,"y":1.878,"f":false},{"x":0.243,"y":-1.771,"f":false},{"x":1.655,"y":0.595,"f":false},{"x":-0.756,"y":-2.433,"f":false},{"x":1.308,"y":-0.757,"f":false},{"x":0.827,"y":-1.489,"f":false},{"x":1.829,"y":0.374,"f":false},{"x":-0.357,"y":0.385,"f":false},{"x":0.008,"y":-1.855,"f":false},{"x":0.106,"y":1.225,"f":false},{"x":-1.099,"y":1.468,"f":false},{"x":-1.334,"y":-1.76,"f":false},{"x":0.257,"y":0.418,"f":false},{"x":-1.095,"y":1.604,"f":false},{"x":0.647,"y":-0.045,"f":false},{"x":0.396,"y":-1.364,"f":false},{"x":1.529,"y":0.278,"f":false},{"x":0.712,"y":0.97,"f":false},{"x":-1.512,"y":1.837,"f":false},{"x":-1.666,"y":1.625,"f":false},{"x":0.77,"y":1.563,"f":false},{"x":-3.843,"y":-0.667,"f":false},{"x":-0.895,"y":0.063,"f":false},{"x":1.033,"y":-1.983,"f":false},{"x":-0.409,"y":1.671,"f":false},{"x":1.848,"y":-1.117,"f":false},{"x":1.32,"y":-0.98,"f":false},{"x":1.04,"y":0.476,"f":false},{"x":1.887,"y":-0.964,"f":false},{"x":0.659,"y":1.9,"f":false},{"x":1.316,"y":0.785,"f":false},{"x":-1.466,"y":1.315,"f":false},{"x":-1.855,"y":0.33,"f":false},{"x":-4.463,"y":-3.389,"f":false},{"x":-1.032,"y":-1.168,"f":false},{"x":0.327,"y":1.541,"f":false},{"x":0.383,"y":0.102,"f":false},{"x":-3.24,"y":2.942,"f":false},{"x":-0.988,"y":-0.174,"f":false},{"x":-0.7,"y":0.639,"f":false},{"x":1.135,"y":-0.072,"f":false},{"x":1.059,"y":-1.642,"f":false},{"x":1.274,"y":-0.631,"f":false},{"x":0.615,"y":-2.19,"f":false},{"x":1.529,"y":-1.821,"f":false},{"x":-1.09,"y":0.357,"f":false},{"x":1.136,"y":0.926,"f":false},{"x":-3.877,"y":0.013,"f":false},{"x":-3.546,"y":-2.776,"f":false},{"x":-0.264,"y":-2.803,"f":false},{"x":-3.187,"y":-0.399,"f":false},{"x":0.336,"y":-1.548,"f":false},{"x":-0.352,"y":1.472,"f":false},{"x":0.872,"y":0.034,"f":false},{"x":0.49,"y":-0.551,"f":false},{"x":-1.814,"y":-2.885,"f":false},{"x":1.136,"y":-1.641,"f":false},{"x":-0.806,"y":1.157,"f":false},{"x":-2.957,"y":-0.968,"f":false},{"x":-3.113,"y":-0.544,"f":false},{"x":-2.714,"y":-2.744,"f":false},{"x":1.378,"y":1.642,"f":false},{"x":0.058,"y":0.105,"f":false},{"x":1.828,"y":1.703,"f":false},{"x":-4.945,"y":-0.166,"f":false},{"x":1.49,"y":-2.988,"f":false},{"x":0.767,"y":-0.539,"f":false},{"x":-0.308,"y":1.596,"f":false},{"x":0.147,"y":-2.902,"f":false},{"x":-0.618,"y":0.537,"f":false},{"x":-0.269,"y":1.659,"f":false},{"x":-0.243,"y":0.04,"f":false},{"x":1.989,"y":-2.48,"f":false},{"x":1.047,"y":1.54,"f":false},{"x":-2.37,"y":-2.445,"f":false},{"x":-1.426,"y":-0.868,"f":false},{"x":1.289,"y":-0.272,"f":false},{"x":-0.727,"y":1.621,"f":false},{"x":-0.52,"y":-2.16,"f":false},{"x":1.106,"y":-1.049,"f":false},{"x":1.02,"y":0.722,"f":false},{"x":0.262,"y":0.184,"f":false},{"x":0.438,"y":0.024,"f":false},{"x":-0.181,"y":1.845,"f":false},{"x":1.228,"y":-1.993,"f":false},{"x":2.199,"y":-1.473,"f":false},{"x":0.841,"y":1.725,"f":false},{"x":-0.051,"y":0.653,"f":false},{"x":1.988,"y":-1.622,"f":false},{"x":1.215,"y":-1.414,"f":false},{"x":-0.292,"y":-2.098,"f":false},{"x":-0.65,"y":0.352,"f":false},{"x":1.328,"y":0.179,"f":false},{"x":1.217,"y":1.8,"f":false},{"x":1.204,"y":-0.139,"f":false},{"x":-2.246,"y":2.2,"f":false},{"x":1.271,"y":1.098,"f":false},{"x":-0.518,"y":1.496,"f":false},{"x":-0.845,"y":0.998,"f":false},{"x":0.738,"y":1.123,"f":false},{"x":0.129,"y":0.847,"f":false},{"x":0.047,"y":1.216,"f":false},{"x":-2.185,"y":0.697,"f":false},{"x":1.064,"y":-0.397,"f":false},{"x":0.563,"y":0.838,"f":false},{"x":1.565,"y":0.379,"f":false},{"x":-0.083,"y":-0.608,"f":false},{"x":0.625,"y":0.088,"f":false},{"x":0.296,"y":0.809,"f":false},{"x":0.981,"y":0.35,"f":false},{"x":0.203,"y":0.099,"f":false},{"x":1.09,"y":1.005,"f":false},{"x":-1.368,"y":1.752,"f":false},{"x":0.958,"y":-2.155,"f":false},{"x":0.235,"y":0.147,"f":false},{"x":1.635,"y":1.53,"f":false},{"x":2.348,"y":-2.318,"f":false},{"x":1.222,"y":0.894,"f":false},{"x":0.545,"y":-0.895,"f":false},{"x":2.211,"y":-2.496,"f":false},{"x":0.747,"y":-2.222,"f":false},{"x":-0.319,"y":0.779,"f":false},{"x":-0.021,"y":1.116,"f":false},{"x":0.553,"y":0.163,"f":false},{"x":1.603,"y":-0.301,"f":false},{"x":0.615,"y":1.077,"f":false},{"x":-0.996,"y":-0.449,"f":false},{"x":1.865,"y":-0.761,"f":false},{"x":1.005,"y":-0.954,"f":false},{"x":-0.33,"y":-2.064,"f":false},{"x":0.724,"y":1.25,"f":false},{"x":0.089,"y":0.549,"f":false},{"x":0.79,"y":0.14,"f":false},{"x":-1.122,"y":0.911,"f":false},{"x":1.092,"y":0.816,"f":false},{"x":-2.281,"y":-0.54,"f":false},{"x":0.019,"y":-0.107,"f":false},{"x":-1.051,"y":-0.398,"f":false},{"x":-3.22,"y":0.908,"f":false},{"x":0.224,"y":1.49,"f":false},{"x":-0.958,"y":-1.386,"f":false},{"x":-0.177,"y":-1.69,"f":false},{"x":-0.765,"y":1.094,"f":false},{"x":-0.176,"y":1.254,"f":false},{"x":0.992,"y":-0.155,"f":false},{"x":1.299,"y":1.603,"f":false},{"x":0.442,"y":-2.175,"f":false},{"x":-0.393,"y":-0.201,"f":false},{"x":0.351,"y":0.221,"f":false},{"x":-1.83,"y":0.625,"f":false},{"x":1.351,"y":1.734,"f":false},{"x":-0.06,"y":-0.377,"f":false},{"x":-2.094,"y":0.253,"f":false},{"x":-2.402,"y":2.318,"f":false},{"x":-1.312,"y":0.874,"f":false},{"x":-3.19,"y":-0.052,"f":false},{"x":0.916,"y":1.435,"f":false},{"x":-0.774,"y":-0.552,"f":false},{"x":-3.703,"y":0.079,"f":false},{"x":-0.095,"y":1.556,"f":false},{"x":-3.212,"y":-0.237,"f":false},{"x":0.649,"y":-1.081,"f":false},{"x":1.043,"y":1.67,"f":false},{"x":0.48,"y":0.787,"f":false},{"x":1.125,"y":-0.54,"f":false},{"x":1.402,"y":-0.899,"f":false},{"x":0.902,"y":0.484,"f":false},{"x":-0.643,"y":0.102,"f":false},{"x":-0.26,"y":0.776,"f":false},{"x":-3.925,"y":0.254,"f":false},{"x":0.21,"y":1.729,"f":false},{"x":-1.077,"y":1.293,"f":false},{"x":-3.568,"y":-3.808,"f":false},{"x":-3.835,"y":-1.334,"f":false},{"x":0.443,"y":1.88,"f":false},{"x":-0.713,"y":1.728,"f":false},{"x":-0.871,"y":0.593,"f":false},{"x":1.445,"y":-0.167,"f":false},{"x":0.528,"y":-2.237,"f":false},{"x":1.923,"y":-0.008,"f":false},{"x":1.424,"y":0.383,"f":false},{"x":0.475,"y":0.581,"f":false},{"x":-4.499,"y":0.434,"f":false},{"x":-0.389,"y":1.323,"f":false},{"x":0.297,"y":-3.528,"f":false},{"x":-2.456,"y":-3.088,"f":false},{"x":0.149,"y":0.223,"f":false},{"x":-4.383,"y":-0.338,"f":false},{"x":1.623,"y":-0.878,"f":false},{"x":1.729,"y":-0.759,"f":false},{"x":-0.519,"y":1.8,"f":false},{"x":0.611,"y":1.477,"f":false},{"x":-0.061,"y":1.031,"f":false},{"x":0.656,"y":-0.499,"f":false},{"x":-1.872,"y":1.969,"f":false},{"x":-1.614,"y":1.099,"f":false},{"x":1.986,"y":0.118,"f":false},{"x":-1.088,"y":2.228,"f":false},{"x":1.838,"y":-2.951,"f":false},{"x":1.408,"y":0.84,"f":false},{"x":0.846,"y":0.756,"f":false},{"x":-0.421,"y":-0.2,"f":false},{"x":1.408,"y":0.237,"f":false},{"x":0.767,"y":1.295,"f":false},{"x":-8.092,"y":-1.112,"f":false},{"x":1.607,"y":-0.201,"f":false},{"x":-1.724,"y":1.88,"f":false},{"x":-3.61,"y":0.947,"f":false},{"x":0.138,"y":0.9,"f":false},{"x":-0.829,"y":1.515,"f":false},{"x":-1.172,"y":1.821,"f":false},{"x":1.016,"y":-2.229,"f":false},{"x":1.081,"y":-1.391,"f":false},{"x":0.939,"y":1.055,"f":false},{"x":-0.327,"y":0.564,"f":false},{"x":0.444,"y":0.042,"f":false},{"x":-4.609,"y":-0.782,"f":false},{"x":1.447,"y":0.918,"f":false},{"x":-2.383,"y":0.616,"f":false},{"x":-0.369,"y":1.362,"f":false},{"x":-4.128,"y":-0.021,"f":false},{"x":0.171,"y":-1.572,"f":false},{"x":2.403,"y":0.318,"f":false},{"x":1.991,"y":-3.27,"f":false},{"x":-3.301,"y":-0.827,"f":false},{"x":-1.753,"y":0.93,"f":false},{"x":0.184,"y":1.782,"f":false},{"x":0.666,"y":-1.362,"f":false},{"x":-6.038,"y":-0.634,"f":false},{"x":-1.188,"y":1.923,"f":false},{"x":-3.5,"y":1.45,"f":false},{"x":-1.185,"y":0.711,"f":false},{"x":-1.283,"y":-0.235,"f":false},{"x":-2.195,"y":1.207,"f":false},{"x":-0.857,"y":0.215,"f":false},{"x":1.419,"y":0.979,"f":false},{"x":0.809,"y":-0.676,"f":false},{"x":0.459,"y":0.132,"f":false},{"x":-2.189,"y":1.06,"f":false},{"x":-1.241,"y":-1.99,"f":false},{"x":0.959,"y":-0.544,"f":false},{"x":1.663,"y":0.306,"f":false},{"x":0.19,"y":-0.172,"f":false},{"x":-3.244,"y":-3.142,"f":false},{"x":1.303,"y":-0.129,"f":false},{"x":0.854,"y":1.847,"f":false},{"x":-0.932,"y":0.366,"f":false},{"x":-6.043,"y":0.766,"f":false},{"x":-1.106,"y":0.43,"f":false},{"x":-1.501,"y":-0.187,"f":false},{"x":1.342,"y":-0.533,"f":false},{"x":-1.958,"y":1.213,"f":false},{"x":1.669,"y":-0.125,"f":false},{"x":-0.504,"y":-0.18,"f":false},{"x":-1.786,"y":0.867,"f":false},{"x":1.471,"y":0.265,"f":false},{"x":0.846,"y":1.112,"f":false},{"x":0.895,"y":1.273,"f":false},{"x":0.199,"y":0.366,"f":false},{"x":-0.103,"y":-0.624,"f":false},{"x":-5.251,"y":-0.18,"f":false},{"x":0.045,"y":-1.078,"f":false},{"x":-4.415,"y":-1.47,"f":false},{"x":0.599,"y":0.448,"f":false},{"x":0.242,"y":1.463,"f":false},{"x":-1.739,"y":0.087,"f":false},{"x":-0.442,"y":0.957,"f":false},{"x":-0.884,"y":1.106,"f":false},{"x":0.214,"y":-1.641,"f":false},{"x":-3.276,"y":0.78,"f":false},{"x":-0.561,"y":-2.508,"f":false},{"x":0.893,"y":0.08,"f":false},{"x":0.4,"y":0.932,"f":false},{"x":-1.54,"y":0.631,"f":false},{"x":-2.723,"y":1.906,"f":false},{"x":0.479,"y":0.397,"f":false},{"x":-0.609,"y":0.061,"f":false},{"x":1.724,"y":-1.564,"f":false},{"x":-0.506,"y":0.523,"f":false},{"x":1.867,"y":-0.236,"f":false},{"x":1.186,"y":1.018,"f":false},{"x":-1.266,"y":1.1,"f":false},{"x":-0.998,"y":0.613,"f":false},{"x":-2.92,"y":0.747,"f":false},{"x":1.139,"y":0.394,"f":false},{"x":-0.01,"y":1.691,"f":false},{"x":0.493,"y":-0.2,"f":false},{"x":1.297,"y":1.068,"f":false},{"x":0.462,"y":-2.048,"f":false},{"x":1.793,"y":-1.682,"f":false},{"x":0.291,"y":1.18,"f":false},{"x":-1.32,"y":-2.312,"f":false},{"x":1.653,"y":0.253,"f":false},{"x":0.65,"y":-1.233,"f":false},{"x":-2.986,"y":-2.835,"f":false},{"x":1.663,"y":0.748,"f":false},{"x":-0.058,"y":1.118,"f":false},{"x":-0.427,"y":1.526,"f":false},{"x":-3.521,"y":0.763,"f":false},{"x":-0.448,"y":-1.136,"f":false},{"x":0.362,"y":0.205,"f":false},{"x":-2.299,"y":1.053,"f":false},{"x":1.864,"y":0.695,"f":false},{"x":2.125,"y":0.403,"f":false},{"x":-1.568,"y":-3.907,"f":false},{"x":0.822,"y":0.003,"f":false},{"x":0.794,"y":-2.635,"f":false},{"x":-2.737,"y":-2.064,"f":false},{"x":-2.756,"y":0.539,"f":false},{"x":0.999,"y":1.574,"f":false},{"x":0.776,"y":0.781,"f":false},{"x":-0.913,"y":1.096,"f":false},{"x":-6.006,"y":-3.953,"f":false},{"x":-2.519,"y":0.57,"f":false},{"x":0.732,"y":0.941,"f":false},{"x":-1.316,"y":-1.373,"f":false},{"x":0.629,"y":-1.326,"f":false},{"x":1.456,"y":-1.789,"f":false},{"x":0.594,"y":-0.334,"f":false},{"x":1.995,"y":-0.059,"f":false},{"x":0.103,"y":0.043,"f":false},{"x":1.481,"y":-1.496,"f":false},{"x":-5.794,"y":-2.724,"f":false},{"x":-0.708,"y":0.383,"f":false},{"x":1.651,"y":1.681,"f":false},{"x":-2.118,"y":2.167,"f":false},{"x":-2.765,"y":1.833,"f":false},{"x":-0.11,"y":-2.382,"f":false},{"x":0.892,"y":-1.644,"f":false},{"x":-3.134,"y":1.561,"f":false},{"x":-0.321,"y":2.052,"f":false},{"x":1.024,"y":0.038,"f":false},{"x":-2.966,"y":-0.342,"f":false},{"x":-1.258,"y":-2.311,"f":false},{"x":1.175,"y":0.798,"f":false},{"x":-1.617,"y":-2.666,"f":false},{"x":-2.409,"y":1.325,"f":false},{"x":0.039,"y":0.64,"f":false},{"x":-0.506,"y":1.179,"f":false},{"x":2.041,"y":0.432,"f":false},{"x":0.265,"y":1.667,"f":false},{"x":1.158,"y":0.599,"f":false},{"x":0.44,"y":0.203,"f":false},{"x":0.764,"y":0.056,"f":false},{"x":-0.395,"y":0.029,"f":false},{"x":0.081,"y":-1.932,"f":false},{"x":0.328,"y":-2.074,"f":false},{"x":0.968,"y":-0.255,"f":false},{"x":-0.015,"y":1.797,"f":false},{"x":0.793,"y":0.49,"f":false},{"x":0.829,"y":1.561,"f":false},{"x":0.82,"y":0.895,"f":false},{"x":1.692,"y":-1.519,"f":false},{"x":0.547,"y":0.925,"f":false},{"x":1.437,"y":0.036,"f":false},{"x":-4.522,"y":0.327,"f":false},{"x":-1.011,"y":1.763,"f":false},{"x":0.906,"y":-0.128,"f":false},{"x":1.082,"y":-1.736,"f":false},{"x":0.877,"y":0.791,"f":false},{"x":-2.022,"y":0.596,"f":false},{"x":1.205,"y":0.099,"f":false},{"x":0.791,"y":0.706,"f":false},{"x":2.109,"y":-1.848,"f":false},{"x":1.07,"y":-1.316,"f":false},{"x":1.017,"y":0.724,"f":false},{"x":-1.444,"y":-0.451,"f":false},{"x":0.901,"y":0.947,"f":false},{"x":0.376,"y":-0.625,"f":false},{"x":-3.288,"y":-2.598,"f":false},{"x":0.684,"y":0.473,"f":false},{"x":0.314,"y":0.323,"f":false},{"x":0.977,"y":1.883,"f":false},{"x":0.77,"y":1.765,"f":false},{"x":2.201,"y":0.359,"f":false},{"x":0.571,"y":-1.19,"f":false},{"x":1.094,"y":-0.846,"f":false},{"x":0.474,"y":0.067,"f":false},{"x":1.182,"y":0.293,"f":false},{"x":0.443,"y":0.587,"f":false},{"x":-0.309,"y":1.62,"f":false},{"x":-0.094,"y":0.729,"f":false},{"x":0.449,"y":0.616,"f":false},{"x":1.562,"y":0.345,"f":false},{"x":1.312,"y":-0.921,"f":false},{"x":0.383,"y":1.009,"f":false},{"x":1.483,"y":0.82,"f":false},{"x":0.803,"y":-0.68,"f":false},{"x":-3.126,"y":-3.425,"f":false},{"x":-1.147,"y":1.065,"f":false},{"x":-0.24,"y":1.032,"f":false},{"x":0.209,"y":-0.912,"f":false},{"x":-2.07,"y":-0.504,"f":false},{"x":0.302,"y":-0.126,"f":false},{"x":-4.524,"y":-1.278,"f":false},{"x":1.564,"y":1.572,"f":false},{"x":-0.763,"y":1.8,"f":false},{"x":0.545,"y":1.083,"f":false},{"x":1.205,"y":-1.638,"f":false},{"x":1.491,"y":0.417,"f":false},{"x":1.591,"y":-0.343,"f":false},{"x":-1.543,"y":0.61,"f":false},{"x":0.334,"y":-0.433,"f":false},{"x":-0.414,"y":-0.401,"f":false},{"x":0.904,"y":0.89,"f":false},{"x":-1.404,"y":2.3,"f":false},{"x":0.346,"y":1.501,"f":false},{"x":2.425,"y":-2.087,"f":false},{"x":0.645,"y":1.304,"f":false},{"x":1.089,"y":1.672,"f":false},{"x":1.153,"y":-1.919,"f":false},{"x":-0.841,"y":-2.215,"f":false},{"x":-3.242,"y":0.111,"f":false},{"x":0.034,"y":-2.191,"f":false},{"x":1.87,"y":0.75,"f":false},{"x":-2.544,"y":0.339,"f":false},{"x":0.801,"y":-0.267,"f":false},{"x":-0.435,"y":0.543,"f":false},{"x":1.519,"y":0.813,"f":false},{"x":1.385,"y":-1.868,"f":false},{"x":-0.233,"y":-1.072,"f":false},{"x":-2.112,"y":-2.55,"f":false},{"x":0.827,"y":-1.487,"f":false},{"x":0.481,"y":1.317,"f":false},{"x":1.609,"y":-0.165,"f":false},{"x":2.216,"y":-1.507,"f":false},{"x":0.08,"y":-0.12,"f":false},{"x":-2.006,"y":-3.42,"f":false},{"x":-3.566,"y":0.331,"f":false},{"x":-2.086,"y":1.829,"f":false},{"x":-1.968,"y":-0.633,"f":false},{"x":0.407,"y":0.43,"f":false},{"x":2.503,"y":-1.818,"f":false},{"x":0.47,"y":-0.619,"f":false},{"x":-3.821,"y":-0.215,"f":false},{"x":2.475,"y":-1.661,"f":false},{"x":1.125,"y":1.535,"f":false},{"x":0.903,"y":-1.079,"f":false},{"x":0.946,"y":1.273,"f":false},{"x":2.478,"y":-1.682,"f":false},{"x":0.146,"y":1.964,"f":false},{"x":1.059,"y":1.417,"f":false},{"x":1.043,"y":-1.111,"f":false},{"x":1.72,"y":1.577,"f":false},{"x":-4.794,"y":-2.032,"f":false},{"x":-0.689,"y":1.069,"f":false},{"x":1.029,"y":0.125,"f":false},{"x":1.451,"y":-1.024,"f":false},{"x":1.686,"y":-1.384,"f":false},{"x":0.103,"y":1.287,"f":false},{"x":-1.347,"y":0.428,"f":false},{"x":-0.156,"y":1.907,"f":false},{"x":1.92,"y":0.212,"f":false},{"x":0.999,"y":0.733,"f":false},{"x":0.483,"y":1.886,"f":false},{"x":-2.293,"y":-2.477,"f":false},{"x":0.803,"y":-0.018,"f":false},{"x":0.59,"y":0.3,"f":false},{"x":0.423,"y":1.876,"f":false},{"x":-0.145,"y":1.202,"f":false},{"x":-0.648,"y":0.409,"f":false},{"x":0.684,"y":1.627,"f":false},{"x":-1.779,"y":-0.39,"f":false},{"x":0.914,"y":1.101,"f":false},{"x":1.089,"y":0.088,"f":false},{"x":1.637,"y":-0.827,"f":false},{"x":0.983,"y":-0.084,"f":false},{"x":-0.613,"y":-0.118,"f":false},{"x":1.04,"y":0.904,"f":false},{"x":-0.53,"y":1.163,"f":false},{"x":0.532,"y":-2.17,"f":false},{"x":-0.136,"y":0.145,"f":false},{"x":-0.692,"y":-2.234,"f":false},{"x":-2.188,"y":-0.672,"f":false},{"x":-1.5,"y":-0.378,"f":false},{"x":-4.941,"y":-0.575,"f":false},{"x":-0.98,"y":1.235,"f":false},{"x":1.165,"y":0.731,"f":false},{"x":1.254,"y":-0.686,"f":false},{"x":0.723,"y":0.137,"f":false},{"x":0.856,"y":0.499,"f":false},{"x":1.842,"y":1.548,"f":false},{"x":-0.128,"y":0.9,"f":false},{"x":0.534,"y":1.27,"f":false},{"x":1.479,"y":0.818,"f":false},{"x":-2.008,"y":2.426,"f":false},{"x":-0.134,"y":-0.347,"f":false},{"x":-0.207,"y":0.181,"f":false},{"x":0.12,"y":-0.001,"f":false},{"x":1.339,"y":-0.187,"f":false},{"x":-4.445,"y":0.213,"f":false},{"x":1.66,"y":0.713,"f":false},{"x":-1.431,"y":-2.827,"f":false},{"x":0.628,"y":-1.803,"f":false},{"x":-5.834,"y":-0.804,"f":false},{"x":0.579,"y":-1.344,"f":false},{"x":2.404,"y":-0.878,"f":false},{"x":-0.864,"y":-0.688,"f":false},{"x":-0.873,"y":1.985,"f":false},{"x":2.002,"y":-1.854,"f":false},{"x":-1.272,"y":-0.272,"f":false},{"x":0.217,"y":-0.41,"f":false},{"x":-2.744,"y":-2.613,"f":false},{"x":2.356,"y":-2.679,"f":false},{"x":-0.089,"y":-0.161,"f":false},{"x":2.568,"y":0.142,"f":false},{"x":-1.586,"y":0.41,"f":false},{"x":1.355,"y":-2.255,"f":false},{"x":0.295,"y":0.465,"f":false},{"x":1.405,"y":-1.17,"f":false},{"x":1.521,"y":-1.678,"f":false},{"x":2.241,"y":0.826,"f":false},{"x":1.818,"y":1.64,"f":false},{"x":-0.586,"y":0.099,"f":false},{"x":1.504,"y":0.127,"f":false},{"x":1.146,"y":-0.64,"f":false},{"x":1.05,"y":-1.907,"f":false},{"x":1.094,"y":0.791,"f":false},{"x":1.093,"y":0.776,"f":false},{"x":1.077,"y":-0.192,"f":false},{"x":1.622,"y":0.095,"f":false},{"x":-0.483,"y":0.038,"f":false},{"x":1.341,"y":-0.119,"f":false},{"x":1.215,"y":1.523,"f":false},{"x":0.14,"y":1.741,"f":false},{"x":1.176,"y":-0.494,"f":false},{"x":0.867,"y":-0.026,"f":false},{"x":-5.036,"y":-3.615,"f":false},{"x":-2.324,"y":0.79,"f":false},{"x":0.719,"y":0.037,"f":false},{"x":-1.013,"y":1.852,"f":false},{"x":0.56,"y":1.562,"f":false},{"x":1.059,"y":1.74,"f":false},{"x":-0.808,"y":1.067,"f":false},{"x":-1.877,"y":-2.644,"f":false},{"x":-0.096,"y":-0.219,"f":false},{"x":0.401,"y":0.927,"f":false},{"x":0.602,"y":-0.199,"f":false},{"x":-0.708,"y":0.074,"f":false},{"x":0.764,"y":-1.492,"f":false},{"x":1.055,"y":-1.847,"f":false},{"x":1.703,"y":0.155,"f":false},{"x":-0.338,"y":-0.066,"f":false},{"x":0.365,"y":0.4,"f":false},{"x":-1.231,"y":-2.663,"f":false},{"x":-1.422,"y":-0.453,"f":false},{"x":-0.408,"y":0.732,"f":false},{"x":-0.57,"y":1.501,"f":false},{"x":-1.655,"y":2.386,"f":false},{"x":1.141,"y":0.212,"f":false},{"x":1.892,"y":0.831,"f":false},{"x":1.431,"y":-1.68,"f":false},{"x":-0.048,"y":0.777,"f":false},{"x":1.278,"y":0.112,"f":false},{"x":0.5,"y":1.046,"f":false},{"x":0.373,"y":1.351,"f":false},{"x":0.615,"y":1.995,"f":false},{"x":0.637,"y":1.964,"f":false},{"x":1.59,"y":0.35,"f":false},{"x":0.04,"y":-0.511,"f":false},{"x":0.726,"y":0.518,"f":false},{"x":1.406,"y":-1.231,"f":false},{"x":0.202,"y":1.758,"f":false},{"x":0.964,"y":0.493,"f":false},{"x":1.365,"y":1.526,"f":false},{"x":-2.087,"y":0.455,"f":false},{"x":-0.999,"y":0.728,"f":false},{"x":0.128,"y":0.509,"f":false},{"x":0.417,"y":1.441,"f":false},{"x":1.016,"y":0.284,"f":false},{"x":0.152,"y":0.428,"f":false},{"x":1.093,"y":0.268,"f":false},{"x":0.471,"y":0.738,"f":false},{"x":-0.146,"y":-1.25,"f":false},{"x":-0.622,"y":1.131,"f":false},{"x":-2.01,"y":-3.635,"f":false},{"x":1.531,"y":-1.648,"f":false},{"x":1.43,"y":-1.458,"f":false},{"x":1.291,"y":-0.524,"f":false},{"x":-0.512,"y":0.308,"f":false},{"x":-0.658,"y":0.715,"f":false},{"x":-2.054,"y":0.759,"f":false},{"x":-0.683,"y":-1.095,"f":false},{"x":0.118,"y":0.908,"f":false},{"x":-1.661,"y":0.988,"f":false},{"x":0.583,"y":1.768,"f":false},{"x":0.615,"y":0.118,"f":false},{"x":1.822,"y":-1.99,"f":false},{"x":1.702,"y":-1.449,"f":false},{"x":1.97,"y":-0.368,"f":false},{"x":1.782,"y":0.22,"f":false},{"x":0.645,"y":-0.959,"f":false},{"x":1.687,"y":1.596,"f":false},{"x":-2.338,"y":-0.061,"f":false},{"x":-1.383,"y":0.261,"f":false},{"x":-0.723,"y":0.875,"f":false},{"x":-1.846,"y":0.491,"f":false},{"x":0.196,"y":0.537,"f":false},{"x":1.623,"y":-0.883,"f":false},{"x":-0.529,"y":1.128,"f":false},{"x":0.439,"y":-0.15,"f":false},{"x":1.387,"y":0.191,"f":false},{"x":0.634,"y":0.264,"f":false},{"x":1.777,"y":0.441,"f":false},{"x":-3.587,"y":1.355,"f":false},{"x":-0.5,"y":0.298,"f":false},{"x":0.735,"y":-0.463,"f":false},{"x":2.024,"y":-1.126,"f":false},{"x":0.852,"y":-0.229,"f":false},{"x":-1.551,"y":1.524,"f":false},{"x":0.611,"y":0.163,"f":false},{"x":-0.256,"y":0.557,"f":false},{"x":0.592,"y":1.645,"f":false},{"x":1.345,"y":-1.13,"f":false},{"x":1.705,"y":1.016,"f":false},{"x":1.016,"y":0.662,"f":false},{"x":-0.089,"y":1.03,"f":false},{"x":2.023,"y":-0.947,"f":false},{"x":-0.233,"y":-3.16,"f":false},{"x":-1.644,"y":1.675,"f":false},{"x":1.836,"y":-0.724,"f":false},{"x":1.993,"y":0.2,"f":false},{"x":0.424,"y":0.839,"f":false},{"x":-2.88,"y":0.178,"f":false},{"x":0.439,"y":-0.307,"f":false},{"x":0.495,"y":-0.668,"f":false},{"x":0.451,"y":0.807,"f":false},{"x":0.288,"y":0.427,"f":false},{"x":1.829,"y":-1.805,"f":false},{"x":-0.147,"y":-0.397,"f":false},{"x":0.044,"y":0.821,"f":false},{"x":0.097,"y":1.104,"f":false},{"x":-0.427,"y":1.817,"f":false},{"x":1.797,"y":-0.24,"f":false},{"x":0.953,"y":0.395,"f":false},{"x":0.386,"y":-0.958,"f":false},{"x":0.987,"y":-0.745,"f":false},{"x":-0.736,"y":0.719,"f":false},{"x":0.77,"y":0.343,"f":false},{"x":1.918,"y":-0.067,"f":false},{"x":2.05,"y":-1.561,"f":false},{"x":-1.471,"y":-0.203,"f":false},{"x":0.794,"y":1.182,"f":false},{"x":0.117,"y":-1.787,"f":false},{"x":-3.729,"y":-0.186,"f":false},{"x":0.048,"y":-0.401,"f":false},{"x":2.512,"y":-1.936,"f":false},{"x":0.878,"y":0.7,"f":false},{"x":1.096,"y":-0.728,"f":false},{"x":-2.013,"y":2.656,"f":false},{"x":1.564,"y":0.365,"f":false},{"x":1.177,"y":0.422,"f":false},{"x":-0.427,"y":2.27,"f":false},{"x":-0.022,"y":-1.693,"f":false},{"x":0.483,"y":0.407,"f":false},{"x":1.295,"y":1.702,"f":false},{"x":-1.065,"y":-0.069,"f":false},{"x":-1.28,"y":-2.089,"f":false},{"x":0.822,"y":0.861,"f":false},{"x":-0.2,"y":0.953,"f":false},{"x":0.644,"y":1.284,"f":false},{"x":-1.426,"y":0.433,"f":false},{"x":-0.341,"y":0.993,"f":false},{"x":-4.074,"y":0.308,"f":false},{"x":1.287,"y":-0.362,"f":false},{"x":-1.358,"y":1.546,"f":false},{"x":0.355,"y":1.394,"f":false},{"x":0.758,"y":-0.124,"f":false},{"x":-1.099,"y":-0.459,"f":false},{"x":0.5,"y":0.362,"f":false},{"x":0.661,"y":-0.45,"f":false},{"x":-1.029,"y":-0.892,"f":false},{"x":1.593,"y":-0.338,"f":false},{"x":-0.446,"y":2.104,"f":false},{"x":1.234,"y":1.563,"f":false},{"x":-1.815,"y":0.049,"f":false},{"x":1.316,"y":-1.323,"f":false},{"x":0.783,"y":1.513,"f":false},{"x":-0.986,"y":1.165,"f":false},{"x":0.039,"y":1.13,"f":false},{"x":-4.607,"y":0.843,"f":false},{"x":-2.213,"y":2.506,"f":false},{"x":0.477,"y":-0.891,"f":false},{"x":0.168,"y":-1.315,"f":false},{"x":1.13,"y":1.531,"f":false},{"x":-1.603,"y":0.299,"f":false},{"x":0.99,"y":1.272,"f":false},{"x":0.253,"y":1.023,"f":false},{"x":-0.1,"y":1.75,"f":false},{"x":1.084,"y":-2.076,"f":false},{"x":0.422,"y":0.451,"f":false},{"x":0.66,"y":0.944,"f":false},{"x":-0.686,"y":0.626,"f":false},{"x":-3.031,"y":-0.605,"f":false},{"x":-0.169,"y":1.863,"f":false},{"x":-3.643,"y":1.825,"f":false},{"x":-0.186,"y":-0.15,"f":false},{"x":-3.844,"y":0.794,"f":false},{"x":0.139,"y":2.04,"f":false},{"x":-3.257,"y":0.3,"f":false},{"x":0.69,"y":0.781,"f":false},{"x":1.108,"y":1.002,"f":false},{"x":-0.08,"y":1.343,"f":false},{"x":1.235,"y":1.482,"f":false},{"x":0.967,"y":1.58,"f":false},{"x":1.227,"y":-0.091,"f":false},{"x":-1.846,"y":1.536,"f":false},{"x":0.298,"y":0.38,"f":false},{"x":0.866,"y":0.708,"f":false},{"x":0.792,"y":0.558,"f":false},{"x":-5.006,"y":-0.46,"f":false},{"x":2.111,"y":-1.509,"f":false},{"x":-0.168,"y":1.641,"f":false},{"x":0.809,"y":-0.807,"f":false},{"x":1.351,"y":-0.975,"f":false},{"x":-3.304,"y":1.453,"f":false},{"x":-2.391,"y":2.064,"f":false},{"x":-3.553,"y":1.202,"f":false},{"x":1.52,"y":0.192,"f":false},{"x":1.667,"y":-1.752,"f":false},{"x":1.291,"y":-0.995,"f":false},{"x":1.305,"y":1.46,"f":false},{"x":1.631,"y":1.465,"f":false},{"x":-5.146,"y":-0.504,"f":false},{"x":-2.687,"y":1.923,"f":false},{"x":0.557,"y":0.007,"f":false},{"x":0.49,"y":0.163,"f":false},{"x":-0.573,"y":2.337,"f":false},{"x":0.603,"y":1.316,"f":false},{"x":0.99,"y":1.261,"f":false},{"x":-0.58,"y":1.704,"f":false},{"x":-0.312,"y":0.65,"f":false},{"x":-1.393,"y":-2.192,"f":false},{"x":-1.996,"y":-0.093,"f":false},{"x":0.889,"y":0.359,"f":false},{"x":0.976,"y":1.584,"f":false},{"x":-6.191,"y":-4.449,"f":false},{"x":1.553,"y":0.354,"f":false},{"x":1.312,"y":0.522,"f":false},{"x":0.779,"y":-0.648,"f":false},{"x":-0.777,"y":-1.997,"f":false},{"x":0.969,"y":0.785,"f":false},{"x":0.151,"y":1.06,"f":false},{"x":1.195,"y":0.949,"f":false},{"x":-2.873,"y":-0.294,"f":false},{"x":-0.063,"y":-0.24,"f":false},{"x":-1.607,"y":0.33,"f":false},{"x":1.382,"y":-1.913,"f":false},{"x":-0.734,"y":1.756,"f":false},{"x":1.66,"y":-0.988,"f":false},{"x":0.615,"y":0.965,"f":false},{"x":1.09,"y":0.937,"f":false},{"x":-0.809,"y":-0.377,"f":false},{"x":-0.833,"y":0.951,"f":false},{"x":-0.7,"y":1.574,"f":false},{"x":-0.547,"y":0.609,"f":false},{"x":0.61,"y":1.756,"f":false},{"x":-0.031,"y":1.307,"f":false},{"x":-0.059,"y":0.351,"f":false},{"x":-0.595,"y":0.898,"f":false},{"x":0.637,"y":-0.588,"f":false},{"x":-0.306,"y":-0.401,"f":false},{"x":0.867,"y":-1.985,"f":false},{"x":-4.485,"y":-0.73,"f":false},{"x":-1.986,"y":1.231,"f":false},{"x":-1.84,"y":-1.016,"f":false},{"x":1.005,"y":-1.458,"f":false},{"x":0.149,"y":1.275,"f":false},{"x":-1.706,"y":-1.808,"f":false},{"x":-3.173,"y":-1.757,"f":false},{"x":1.267,"y":-1.51,"f":false},{"x":0.675,"y":0.856,"f":false},{"x":0.208,"y":0.853,"f":false},{"x":1.21,"y":-0.181,"f":false},{"x":1.658,"y":-0.523,"f":false},{"x":1.383,"y":0.972,"f":false},{"x":-0.962,"y":-0.21,"f":false},{"x":1.125,"y":-2.36,"f":false},{"x":2.015,"y":-0.896,"f":false},{"x":0.248,"y":1.037,"f":false},{"x":-5.115,"y":-0.897,"f":false},{"x":2.005,"y":1.504,"f":false},{"x":1.398,"y":0.337,"f":false},{"x":-3.323,"y":1.782,"f":false},{"x":-2.238,"y":1.014,"f":false},{"x":0.088,"y":1.514,"f":false},{"x":2.688,"y":-2.191,"f":false},{"x":0.593,"y":-0.359,"f":false},{"x":1.202,"y":0.435,"f":false},{"x":0.778,"y":1.405,"f":false},{"x":-4.041,"y":-0.787,"f":false},{"x":1.243,"y":0.222,"f":false},{"x":0.921,"y":-0.686,"f":false},{"x":-0.131,"y":-1.979,"f":false},{"x":1.692,"y":-0.301,"f":false},{"x":-2.344,"y":0.954,"f":false},{"x":0.161,"y":0.803,"f":false},{"x":-0.055,"y":1.143,"f":false},{"x":0.536,"y":0.654,"f":false},{"x":-0.181,"y":0.531,"f":false},{"x":-3.395,"y":-3.985,"f":true},{"x":0.804,"y":-4.75,"f":true},{"x":-2.559,"y":-6.577,"f":true},{"x":0.193,"y":-2.54,"f":true},{"x":-10.458,"y":-3.37,"f":true},{"x":-1.728,"y":-1.138,"f":true},{"x":-6.537,"y":-0.046,"f":true},{"x":-1.415,"y":-1.915,"f":true},{"x":-2.604,"y":-0.318,"f":true},{"x":-0.364,"y":-0.155,"f":true},{"x":-3.14,"y":-2.623,"f":true},{"x":0.266,"y":-4.119,"f":true},{"x":-7.185,"y":-4.774,"f":true},{"x":-7.574,"y":2.435,"f":true},{"x":-11.411,"y":-4.403,"f":true},{"x":0.807,"y":-2.062,"f":true},{"x":-11.17,"y":-2.944,"f":true},{"x":1.851,"y":-0.465,"f":true},{"x":-2.543,"y":-2.551,"f":true},{"x":-0.415,"y":-5.092,"f":true},{"x":1.757,"y":-1.39,"f":true},{"x":-1.537,"y":-7.02,"f":true},{"x":-4.463,"y":-6.967,"f":true},{"x":-0.034,"y":-4.924,"f":true},{"x":-9.612,"y":-5.61,"f":true},{"x":-0.879,"y":-1.126,"f":true},{"x":-8.546,"y":0.948,"f":true},{"x":-1.477,"y":-4.342,"f":true},{"x":-2.394,"y":-4.828,"f":true},{"x":-6.622,"y":2.802,"f":true},{"x":0.326,"y":-5.103,"f":true},{"x":-22.167,"y":-5.368,"f":true},{"x":-0.011,"y":-2.373,"f":true},{"x":-0.911,"y":-3.375,"f":true},{"x":-9.477,"y":-4.522,"f":true},{"x":-8.274,"y":-1.172,"f":true},{"x":-12.477,"y":-5.606,"f":true},{"x":-2.373,"y":-1.767,"f":true},{"x":-16.048,"y":-7.17,"f":true},{"x":-2.879,"y":-2.028,"f":true},{"x":0.329,"y":-5.066,"f":true},{"x":-0.538,"y":-3.291,"f":true},{"x":-1.441,"y":-1.314,"f":true},{"x":1.713,"y":-0.638,"f":true},{"x":-5.701,"y":3.559,"f":true},{"x":-14.332,"y":-5.96,"f":true},{"x":-7.637,"y":2.734,"f":true},{"x":-5.595,"y":-0.67,"f":true},{"x":-8.828,"y":0.025,"f":true},{"x":-10.215,"y":-4.798,"f":true},{"x":-0.213,"y":-3.733,"f":true},{"x":-10.597,"y":-5.945,"f":true},{"x":-6.94,"y":0.28,"f":true},{"x":-17.418,"y":-0.168,"f":true},{"x":-8.475,"y":-5.488,"f":true},{"x":1.096,"y":-1.54,"f":true},{"x":-6.968,"y":-2.732,"f":true},{"x":-2.438,"y":-6.076,"f":true},{"x":-4.95,"y":3.28,"f":true},{"x":-3.121,"y":-4.593,"f":true},{"x":-0.141,"y":0.077,"f":true},{"x":-11.21,"y":-4.03,"f":true},{"x":-3.698,"y":-5.476,"f":true},{"x":-4.98,"y":3.566,"f":true},{"x":-3.275,"y":0.475,"f":true},{"x":-6.885,"y":1.746,"f":true},{"x":-2.621,"y":-6.135,"f":true},{"x":-9.158,"y":1.299,"f":true},{"x":-6.243,"y":3.096,"f":true},{"x":-7.503,"y":-1.635,"f":true},{"x":-21.027,"y":-7.0,"f":true},{"x":-0.518,"y":-2.756,"f":true},{"x":-3.541,"y":-6.041,"f":true},{"x":-8.381,"y":-2.124,"f":true},{"x":-13.726,"y":-6.751,"f":true},{"x":-1.026,"y":-3.537,"f":true},{"x":0.876,"y":-2.924,"f":true},{"x":1.07,"y":0.197,"f":true},{"x":-2.083,"y":-2.587,"f":true},{"x":-5.622,"y":-4.135,"f":true},{"x":1.062,"y":-0.465,"f":true},{"x":0.365,"y":-4.652,"f":true},{"x":-2.61,"y":-2.023,"f":true},{"x":-3.699,"y":-0.593,"f":true},{"x":0.687,"y":-1.667,"f":true},{"x":-8.455,"y":0.432,"f":true},{"x":-9.395,"y":-1.186,"f":true},{"x":1.0,"y":-0.679,"f":true},{"x":-4.875,"y":3.336,"f":true},{"x":-1.697,"y":-3.056,"f":true},{"x":-6.322,"y":3.742,"f":true},{"x":-18.54,"y":-5.71,"f":true},{"x":0.588,"y":-3.834,"f":true},{"x":-14.56,"y":-0.681,"f":true},{"x":0.113,"y":0.456,"f":true},{"x":-2.645,"y":-7.138,"f":true},{"x":-0.045,"y":-4.087,"f":true},{"x":-0.728,"y":-1.119,"f":true},{"x":1.398,"y":-0.483,"f":true},{"x":-0.154,"y":-5.058,"f":true},{"x":-2.769,"y":-4.509,"f":true},{"x":-0.759,"y":-5.163,"f":true},{"x":-1.096,"y":-6.522,"f":true},{"x":-0.623,"y":-5.789,"f":true},{"x":-7.681,"y":0.24,"f":true},{"x":-3.09,"y":1.348,"f":true},{"x":-1.46,"y":-0.272,"f":true},{"x":-6.965,"y":-5.555,"f":true},{"x":0.936,"y":0.832,"f":true},{"x":-4.999,"y":-5.101,"f":true},{"x":-4.787,"y":-6.044,"f":true},{"x":-3.179,"y":-4.191,"f":true},{"x":-6.64,"y":3.013,"f":true},{"x":-8.197,"y":-1.002,"f":true},{"x":-12.992,"y":-5.737,"f":true},{"x":-5.763,"y":-5.816,"f":true},{"x":-3.214,"y":-1.13,"f":true},{"x":-7.589,"y":3.723,"f":true},{"x":-4.903,"y":-0.797,"f":true},{"x":-2.097,"y":-1.698,"f":true},{"x":-0.343,"y":-5.683,"f":true},{"x":-12.085,"y":-4.652,"f":true},{"x":-1.809,"y":-0.206,"f":true},{"x":-10.466,"y":-1.844,"f":true},{"x":-8.068,"y":3.123,"f":true},{"x":-5.421,"y":3.724,"f":true},{"x":0.925,"y":0.746,"f":true},{"x":-10.806,"y":-0.2,"f":true},{"x":-1.183,"y":-3.856,"f":true},{"x":-3.346,"y":-0.762,"f":true},{"x":1.158,"y":-0.669,"f":true},{"x":1.572,"y":-1.001,"f":true},{"x":-7.15,"y":-5.8,"f":true},{"x":1.674,"y":-0.68,"f":true},{"x":-2.395,"y":-1.688,"f":true},{"x":-6.475,"y":-1.291,"f":true},{"x":-3.605,"y":-7.06,"f":true},{"x":-10.932,"y":-2.798,"f":true},{"x":0.93,"y":-1.206,"f":true},{"x":0.895,"y":-0.207,"f":true},{"x":-0.847,"y":-5.429,"f":true},{"x":-14.294,"y":-6.939,"f":true},{"x":-1.533,"y":0.906,"f":true},{"x":-8.871,"y":-3.789,"f":true},{"x":1.307,"y":-1.88,"f":true},{"x":-0.692,"y":-4.716,"f":true},{"x":0.372,"y":-4.953,"f":true},{"x":-1.829,"y":0.927,"f":true},{"x":-0.049,"y":-0.31,"f":true},{"x":-8.501,"y":-0.557,"f":true},{"x":-6.704,"y":-7.654,"f":true},{"x":-2.033,"y":-6.502,"f":true},{"x":-8.0,"y":-1.025,"f":true},{"x":-7.236,"y":-5.31,"f":true},{"x":-2.008,"y":0.824,"f":true},{"x":-2.818,"y":-3.415,"f":true},{"x":-11.251,"y":-2.577,"f":true},{"x":-11.399,"y":-2.786,"f":true},{"x":-4.03,"y":-1.008,"f":true},{"x":-2.242,"y":-3.999,"f":true},{"x":-9.711,"y":-4.778,"f":true},{"x":0.907,"y":-0.267,"f":true},{"x":1.146,"y":-0.747,"f":true},{"x":-3.064,"y":-1.304,"f":true},{"x":2.115,"y":-1.963,"f":true},{"x":-19.223,"y":-9.04,"f":true},{"x":-1.221,"y":-2.698,"f":true},{"x":-0.16,"y":0.165,"f":true},{"x":-12.365,"y":-6.844,"f":true},{"x":1.05,"y":-1.003,"f":true},{"x":-4.557,"y":-6.583,"f":true},{"x":-2.277,"y":-6.053,"f":true},{"x":0.102,"y":-0.605,"f":true},{"x":1.151,"y":-4.351,"f":true},{"x":-0.048,"y":-0.941,"f":true},{"x":-2.512,"y":-5.266,"f":true},{"x":-3.375,"y":-1.141,"f":true},{"x":-8.326,"y":-0.262,"f":true},{"x":1.241,"y":-0.966,"f":true},{"x":-6.257,"y":3.258,"f":true},{"x":0.255,"y":-3.751,"f":true},{"x":-6.571,"y":-0.436,"f":true},{"x":-8.215,"y":-5.86,"f":true},{"x":0.13,"y":-4.24,"f":true},{"x":0.39,"y":1.154,"f":true},{"x":-6.905,"y":2.747,"f":true},{"x":-6.298,"y":0.533,"f":true},{"x":-1.865,"y":-4.161,"f":true},{"x":-0.309,"y":-3.447,"f":true},{"x":-0.076,"y":-5.36,"f":true},{"x":-6.022,"y":3.933,"f":true},{"x":-2.617,"y":-3.73,"f":true},{"x":-2.242,"y":-3.129,"f":true},{"x":-10.078,"y":-5.804,"f":true},{"x":-9.579,"y":-3.459,"f":true},{"x":0.532,"y":-1.655,"f":true},{"x":-6.857,"y":1.734,"f":true},{"x":0.232,"y":-4.915,"f":true},{"x":-8.159,"y":-5.507,"f":true},{"x":-5.747,"y":-1.357,"f":true},{"x":-6.821,"y":3.263,"f":true},{"x":-1.27,"y":-1.458,"f":true},{"x":-2.169,"y":-6.527,"f":true},{"x":-1.16,"y":-2.547,"f":true},{"x":-12.088,"y":-1.785,"f":true},{"x":-9.751,"y":-3.176,"f":true},{"x":-6.355,"y":3.128,"f":true},{"x":-3.218,"y":-2.795,"f":true},{"x":-1.171,"y":-1.534,"f":true},{"x":-1.592,"y":-5.894,"f":true},{"x":-9.624,"y":0.337,"f":true},{"x":-4.233,"y":-0.434,"f":true},{"x":-7.88,"y":-3.889,"f":true},{"x":-10.518,"y":-3.857,"f":true},{"x":-9.265,"y":-3.17,"f":true},{"x":-6.485,"y":3.783,"f":true},{"x":1.217,"y":-0.045,"f":true},{"x":-5.141,"y":3.55,"f":true},{"x":-7.362,"y":1.723,"f":true},{"x":-9.383,"y":-1.69,"f":true},{"x":-22.195,"y":-7.681,"f":true},{"x":-3.992,"y":-0.83,"f":true},{"x":-13.146,"y":-0.709,"f":true},{"x":-8.265,"y":-2.155,"f":true},{"x":-1.359,"y":0.793,"f":true},{"x":-2.733,"y":-4.413,"f":true},{"x":-5.477,"y":-4.072,"f":true},{"x":-2.828,"y":-3.885,"f":true},{"x":-1.137,"y":-6.658,"f":true},{"x":-0.082,"y":-3.901,"f":true},{"x":1.743,"y":0.229,"f":true},{"x":-9.656,"y":1.345,"f":true},{"x":-8.793,"y":1.256,"f":true},{"x":-6.667,"y":1.635,"f":true},{"x":-2.001,"y":-0.398,"f":true},{"x":-5.029,"y":-5.781,"f":true},{"x":-7.105,"y":1.307,"f":true},{"x":-0.015,"y":-3.841,"f":true},{"x":-10.134,"y":-3.256,"f":true},{"x":-13.302,"y":-6.12,"f":true},{"x":-3.65,"y":0.141,"f":true},{"x":-1.84,"y":-5.527,"f":true},{"x":-5.691,"y":-6.374,"f":true},{"x":-5.896,"y":3.607,"f":true},{"x":0.85,"y":-0.463,"f":true},{"x":1.336,"y":-2.507,"f":true},{"x":0.045,"y":-1.18,"f":true},{"x":-9.978,"y":-2.188,"f":true},{"x":-0.725,"y":-4.23,"f":true},{"x":-8.88,"y":-2.444,"f":true},{"x":-16.429,"y":-6.6,"f":true},{"x":-5.283,"y":3.531,"f":true},{"x":0.67,"y":-1.411,"f":true},{"x":-11.331,"y":-4.142,"f":true},{"x":-1.424,"y":-3.768,"f":true},{"x":-12.84,"y":-4.999,"f":true},{"x":-1.657,"y":-2.309,"f":true},{"x":-1.009,"y":-7.032,"f":true},{"x":-0.192,"y":-3.984,"f":true},{"x":0.908,"y":-0.329,"f":true},{"x":-10.19,"y":-5.853,"f":true},{"x":-0.651,"y":-3.85,"f":true},{"x":0.419,"y":-2.844,"f":true},{"x":-9.151,"y":4.832,"f":true},{"x":-2.6,"y":-6.198,"f":true},{"x":1.718,"y":-2.449,"f":true},{"x":1.975,"y":-0.928,"f":true},{"x":-1.324,"y":-0.583,"f":true},{"x":-0.691,"y":-7.067,"f":true},{"x":1.015,"y":-1.071,"f":true},{"x":-5.775,"y":3.597,"f":true},{"x":-5.242,"y":3.732,"f":true},{"x":1.48,"y":-1.413,"f":true},{"x":-5.027,"y":3.455,"f":true},{"x":-0.659,"y":-2.012,"f":true},{"x":-6.841,"y":-5.622,"f":true},{"x":-9.585,"y":-0.626,"f":true},{"x":0.832,"y":0.122,"f":true},{"x":1.128,"y":-2.281,"f":true},{"x":-9.302,"y":-5.953,"f":true},{"x":-13.395,"y":-6.511,"f":true},{"x":-1.688,"y":-4.923,"f":true},{"x":-10.176,"y":-5.23,"f":true},{"x":-0.201,"y":-5.115,"f":true},{"x":-2.419,"y":-7.006,"f":true},{"x":-0.801,"y":-4.168,"f":true},{"x":-5.244,"y":-0.141,"f":true},{"x":-4.336,"y":-6.22,"f":true},{"x":0.739,"y":0.933,"f":true},{"x":-0.045,"y":1.282,"f":true},{"x":-12.565,"y":-2.334,"f":true},{"x":-16.943,"y":-6.06,"f":true},{"x":1.058,"y":0.959,"f":true},{"x":-5.569,"y":-3.818,"f":true},{"x":0.358,"y":-2.943,"f":true},{"x":-7.08,"y":2.116,"f":true},{"x":-2.239,"y":-2.896,"f":true},{"x":-3.505,"y":-3.82,"f":true},{"x":-1.532,"y":-0.057,"f":true},{"x":-2.745,"y":-3.936,"f":true},{"x":0.944,"y":-0.837,"f":true},{"x":1.811,"y":-1.484,"f":true},{"x":-14.958,"y":-5.514,"f":true},{"x":-8.669,"y":2.697,"f":true},{"x":-13.507,"y":-6.932,"f":true},{"x":-3.119,"y":-6.333,"f":true},{"x":0.729,"y":-3.659,"f":true},{"x":-4.4,"y":-6.71,"f":true},{"x":0.245,"y":-4.69,"f":true},{"x":-5.411,"y":3.704,"f":true},{"x":1.009,"y":-0.201,"f":true},{"x":-0.822,"y":-2.867,"f":true},{"x":-10.627,"y":-3.041,"f":true},{"x":-5.254,"y":3.389,"f":true},{"x":-3.681,"y":-5.011,"f":true},{"x":-5.344,"y":3.654,"f":true},{"x":-6.86,"y":1.654,"f":true},{"x":-8.812,"y":-4.935,"f":true},{"x":-7.728,"y":-1.282,"f":true},{"x":-5.956,"y":-1.464,"f":true},{"x":1.29,"y":-0.772,"f":true},{"x":-13.739,"y":-4.354,"f":true},{"x":-0.172,"y":-2.631,"f":true},{"x":-0.051,"y":-2.729,"f":true},{"x":-8.023,"y":-4.324,"f":true},{"x":-3.799,"y":-3.084,"f":true},{"x":-2.261,"y":-2.082,"f":true},{"x":2.722,"y":-2.813,"f":true},{"x":0.734,"y":-2.727,"f":true},{"x":-0.758,"y":0.459,"f":true},{"x":-8.079,"y":-0.87,"f":true},{"x":-2.639,"y":-3.954,"f":true},{"x":-0.537,"y":-5.283,"f":true},{"x":-0.442,"y":-3.927,"f":true},{"x":0.961,"y":0.46,"f":true},{"x":-0.027,"y":-0.098,"f":true},{"x":-3.696,"y":-2.341,"f":true},{"x":-1.435,"y":-2.949,"f":true},{"x":-10.434,"y":-5.972,"f":true},{"x":-0.62,"y":-4.716,"f":true},{"x":-0.208,"y":-4.716,"f":true},{"x":-8.327,"y":0.68,"f":true},{"x":1.29,"y":-3.602,"f":true},{"x":-5.868,"y":-5.903,"f":true},{"x":-14.265,"y":-5.37,"f":true},{"x":-23.357,"y":-7.168,"f":true},{"x":-5.114,"y":-4.128,"f":true},{"x":-10.642,"y":-0.187,"f":true},{"x":-0.999,"y":0.012,"f":true},{"x":-1.019,"y":-2.335,"f":true},{"x":-4.962,"y":-0.06,"f":true},{"x":-13.056,"y":-4.682,"f":true},{"x":-1.369,"y":-1.875,"f":true},{"x":-2.9,"y":-3.275,"f":true},{"x":-2.459,"y":-5.223,"f":true},{"x":-6.152,"y":3.696,"f":true},{"x":1.72,"y":-0.673,"f":true},{"x":-0.197,"y":-3.662,"f":true},{"x":0.602,"y":-2.386,"f":true},{"x":-5.169,"y":-4.148,"f":true},{"x":1.488,"y":0.093,"f":true},{"x":-2.325,"y":-4.647,"f":true},{"x":-7.871,"y":-0.879,"f":true},{"x":-4.214,"y":-2.288,"f":true},{"x":-16.007,"y":-5.704,"f":true},{"x":-4.514,"y":-1.748,"f":true},{"x":-8.068,"y":2.206,"f":true},{"x":0.154,"y":-1.785,"f":true},{"x":-5.241,"y":1.583,"f":true},{"x":-5.834,"y":-3.771,"f":true},{"x":-0.32,"y":-3.293,"f":true},{"x":-5.716,"y":2.605,"f":true},{"x":0.251,"y":-0.956,"f":true},{"x":1.743,"y":-2.265,"f":true},{"x":-10.944,"y":-4.632,"f":true},{"x":-0.059,"y":-3.018,"f":true},{"x":-0.201,"y":-5.114,"f":true},{"x":1.289,"y":-0.608,"f":true},{"x":-5.809,"y":-2.288,"f":true},{"x":1.609,"y":-0.83,"f":true},{"x":-5.628,"y":-4.119,"f":true},{"x":-5.705,"y":3.675,"f":true},{"x":0.064,"y":-3.089,"f":true},{"x":-1.154,"y":-4.719,"f":true},{"x":-1.79,"y":-0.787,"f":true},{"x":-2.913,"y":-3.616,"f":true},{"x":2.291,"y":-2.92,"f":true},{"x":-3.881,"y":-6.363,"f":true},{"x":-7.991,"y":-6.379,"f":true},{"x":2.233,"y":-4.344,"f":true},{"x":-0.288,"y":-0.326,"f":true},{"x":-2.94,"y":-3.145,"f":true},{"x":-1.99,"y":-3.572,"f":true},{"x":0.696,"y":0.771,"f":true},{"x":-4.41,"y":-0.911,"f":true},{"x":-0.345,"y":-0.269,"f":true},{"x":-13.15,"y":-6.021,"f":true},{"x":0.339,"y":-5.057,"f":true},{"x":3.208,"y":-2.665,"f":true},{"x":-1.351,"y":-2.838,"f":true},{"x":-8.056,"y":-6.578,"f":true},{"x":-3.049,"y":-6.529,"f":true},{"x":-5.525,"y":-0.539,"f":true},{"x":-8.381,"y":2.785,"f":true},{"x":1.724,"y":-0.441,"f":true},{"x":-10.055,"y":-4.071,"f":true},{"x":-9.324,"y":-10.748,"f":true},{"x":-0.058,"y":-8.472,"f":true},{"x":-5.835,"y":2.831,"f":true},{"x":0.514,"y":0.695,"f":true},{"x":-6.067,"y":-5.6,"f":true},{"x":-11.105,"y":-3.098,"f":true},{"x":-6.918,"y":2.906,"f":true},{"x":-6.646,"y":2.743,"f":true},{"x":-8.647,"y":-2.807,"f":true},{"x":-0.193,"y":-4.584,"f":true},{"x":-1.686,"y":-5.485,"f":true},{"x":-17.285,"y":-7.516,"f":true},{"x":-7.117,"y":-5.044,"f":true},{"x":-9.751,"y":-5.967,"f":true},{"x":-6.696,"y":3.36,"f":true},{"x":-0.805,"y":-2.883,"f":true},{"x":-9.981,"y":-4.0,"f":true},{"x":-10.435,"y":-3.584,"f":true},{"x":1.636,"y":-0.549,"f":true},{"x":1.543,"y":0.406,"f":true},{"x":-1.492,"y":-6.969,"f":true},{"x":-2.954,"y":-2.302,"f":true},{"x":0.44,"y":-1.097,"f":true},{"x":-5.184,"y":-2.084,"f":true},{"x":-5.552,"y":-0.713,"f":true},{"x":0.171,"y":-3.661,"f":true},{"x":-3.233,"y":-5.657,"f":true},{"x":-9.208,"y":-4.262,"f":true},{"x":-4.509,"y":-5.795,"f":true},{"x":1.752,"y":-1.288,"f":true},{"x":2.521,"y":-2.928,"f":true},{"x":1.809,"y":-2.287,"f":true},{"x":-8.521,"y":2.861,"f":true},{"x":1.341,"y":-0.305,"f":true},{"x":1.461,"y":-1.449,"f":true},{"x":-20.396,"y":-8.998,"f":true},{"x":-9.754,"y":1.152,"f":true},{"x":-3.167,"y":-2.348,"f":true},{"x":-0.25,"y":-5.676,"f":true},{"x":-3.328,"y":-6.29,"f":true},{"x":-8.974,"y":-4.197,"f":true},{"x":-2.609,"y":-5.668,"f":true},{"x":0.271,"y":-1.443,"f":true},{"x":-0.81,"y":1.677,"f":true},{"x":-26.076,"y":-12.029,"f":true},{"x":-9.475,"y":-0.364,"f":true},{"x":-2.695,"y":-1.414,"f":true},{"x":-6.873,"y":0.574,"f":true},{"x":-7.771,"y":2.315,"f":true},{"x":-1.451,"y":-3.624,"f":true},{"x":-0.037,"y":-4.932,"f":true},{"x":3.082,"y":-3.636,"f":true},{"x":0.944,"y":-0.64,"f":true},{"x":-0.027,"y":-3.017,"f":true},{"x":0.271,"y":-5.055,"f":true},{"x":-5.244,"y":-2.32,"f":true},{"x":-6.66,"y":2.448,"f":true},{"x":-0.934,"y":-0.918,"f":true},{"x":-2.006,"y":-3.145,"f":true},{"x":-1.666,"y":-3.122,"f":true},{"x":-2.27,"y":-6.191,"f":true},{"x":-1.031,"y":1.323,"f":true},{"x":-0.577,"y":-4.141,"f":true},{"x":-0.935,"y":-1.666,"f":true},{"x":-3.021,"y":0.012,"f":true},{"x":-6.389,"y":3.927,"f":true},{"x":-3.719,"y":-4.374,"f":true},{"x":-7.155,"y":3.184,"f":true},{"x":-10.921,"y":-6.022,"f":true},{"x":-6.788,"y":-0.893,"f":true},{"x":-6.372,"y":-2.643,"f":true},{"x":-1.746,"y":-6.161,"f":true},{"x":-6.45,"y":-4.521,"f":true},{"x":-2.529,"y":-6.545,"f":true},{"x":1.187,"y":-0.669,"f":true},{"x":-3.011,"y":-7.525,"f":true},{"x":-7.498,"y":3.044,"f":true},{"x":-1.715,"y":-4.801,"f":true},{"x":-4.362,"y":-6.158,"f":true},{"x":-4.966,"y":3.433,"f":true},{"x":-6.516,"y":-3.751,"f":true},{"x":-16.683,"y":-8.876,"f":true},{"x":-5.716,"y":3.013,"f":true},{"x":2.414,"y":-0.48,"f":true},{"x":0.708,"y":-2.968,"f":true},{"x":1.582,"y":-3.502,"f":true},{"x":-9.603,"y":1.674,"f":true},{"x":-11.719,"y":-2.701,"f":true},{"x":-1.211,"y":-0.791,"f":true},{"x":-1.196,"y":-4.15,"f":true},{"x":1.844,"y":-2.568,"f":true},{"x":-11.684,"y":2.46,"f":true},{"x":-0.058,"y":0.087,"f":true},{"x":-0.919,"y":-5.115,"f":true},{"x":-1.051,"y":-1.775,"f":true},{"x":-3.006,"y":-2.51,"f":true},{"x":-0.029,"y":-5.368,"f":true},{"x":-8.464,"y":3.792,"f":true},{"x":-6.206,"y":1.229,"f":true},{"x":-5.447,"y":3.776,"f":true},{"x":-6.639,"y":2.152,"f":true},{"x":-10.527,"y":1.596,"f":true},{"x":-2.667,"y":-1.597,"f":true},{"x":-10.187,"y":-3.9,"f":true},{"x":-6.614,"y":2.047,"f":true},{"x":-18.441,"y":-5.166,"f":true},{"x":-2.22,"y":-2.613,"f":true},{"x":0.46,"y":-1.753,"f":true},{"x":0.609,"y":-1.217,"f":true},{"x":-5.558,"y":-1.234,"f":true},{"x":-0.65,"y":-1.966,"f":true},{"x":0.049,"y":-5.108,"f":true},{"x":1.499,"y":-1.153,"f":true},{"x":-4.939,"y":3.437,"f":true},{"x":0.672,"y":-1.456,"f":true},{"x":-9.034,"y":-4.823,"f":true},{"x":-7.855,"y":-3.974,"f":true},{"x":-4.842,"y":3.287,"f":true},{"x":-5.943,"y":0.301,"f":true},{"x":-5.751,"y":2.713,"f":true},{"x":-1.845,"y":-2.039,"f":true},{"x":-4.109,"y":-4.182,"f":true},{"x":-2.582,"y":-3.085,"f":true},{"x":-8.987,"y":-4.488,"f":true},{"x":-10.98,"y":-2.948,"f":true},{"x":-3.958,"y":-1.802,"f":true},{"x":1.26,"y":0.178,"f":true},{"x":1.176,"y":-2.055,"f":true},{"x":-17.447,"y":-8.998,"f":true},{"x":1.599,"y":-0.673,"f":true},{"x":-7.58,"y":-4.827,"f":true},{"x":1.352,"y":-0.961,"f":true},{"x":-10.991,"y":-4.06,"f":true},{"x":-2.016,"y":-2.547,"f":true},{"x":-1.546,"y":-4.336,"f":true},{"x":1.63,"y":-0.872,"f":true},{"x":3.0,"y":-1.139,"f":true},{"x":-6.984,"y":3.039,"f":true},{"x":1.532,"y":-2.805,"f":true},{"x":2.555,"y":-2.451,"f":true},{"x":-0.102,"y":0.548,"f":true},{"x":-9.639,"y":0.373,"f":true},{"x":-5.575,"y":-3.418,"f":true},{"x":-1.623,"y":-7.118,"f":true},{"x":-2.158,"y":-5.191,"f":true},{"x":-1.184,"y":-4.037,"f":true},{"x":0.12,"y":-0.708,"f":true},{"x":-4.975,"y":3.536,"f":true},{"x":-7.2,"y":-0.939,"f":true},{"x":-2.274,"y":-2.87,"f":true},{"x":-10.764,"y":-7.448,"f":true},{"x":1.132,"y":-1.002,"f":true},{"x":-12.782,"y":0.63,"f":true},{"x":-11.839,"y":-5.822,"f":true},{"x":0.71,"y":-3.583,"f":true},{"x":-0.673,"y":-0.802,"f":true},{"x":-3.543,"y":-4.643,"f":true},{"x":-3.221,"y":-5.11,"f":true},{"x":0.725,"y":-0.232,"f":true},{"x":-8.696,"y":-5.374,"f":true},{"x":1.431,"y":-1.786,"f":true},{"x":-12.135,"y":-3.783,"f":true},{"x":-0.717,"y":-1.498,"f":true},{"x":-14.038,"y":-6.399,"f":true},{"x":-2.631,"y":-4.641,"f":true},{"x":-6.959,"y":-5.885,"f":true},{"x":-0.889,"y":-6.757,"f":true},{"x":-8.649,"y":-6.258,"f":true},{"x":-1.075,"y":-2.913,"f":true},{"x":-4.869,"y":3.354,"f":true},{"x":-5.057,"y":3.603,"f":true},{"x":2.028,"y":-2.449,"f":true},{"x":-10.31,"y":4.441,"f":true},{"x":1.525,"y":-0.383,"f":true},{"x":-0.841,"y":-0.327,"f":true},{"x":1.579,"y":-0.67,"f":true},{"x":-10.152,"y":-3.375,"f":true},{"x":-1.554,"y":-7.057,"f":true},{"x":0.235,"y":-0.826,"f":true},{"x":-10.855,"y":-2.051,"f":true},{"x":-10.329,"y":2.192,"f":true},{"x":-4.072,"y":-0.245,"f":true},{"x":-2.464,"y":-4.851,"f":true},{"x":2.29,"y":-1.836,"f":true},{"x":-14.596,"y":-2.584,"f":true},{"x":-7.713,"y":2.629,"f":true},{"x":-5.593,"y":-5.642,"f":true},{"x":-11.631,"y":-6.969,"f":true},{"x":-8.358,"y":-1.994,"f":true},{"x":-2.132,"y":-6.589,"f":true},{"x":1.431,"y":-2.054,"f":true},{"x":-5.991,"y":2.928,"f":true},{"x":-2.17,"y":-4.77,"f":true},{"x":0.751,"y":-0.284,"f":true}],"pca_counts":{"normal":5000,"flagged":7417},"stream":{"n_items":124800,"hll":{"estimate":17712,"exact":17714,"rel_error":0.0001,"standard_error":0.0081},"cms":{"eps":0.001,"delta":0.01,"w":2719,"d":5,"memory_bytes":54380,"error_bound":124.8,"fraction_within_bound":1.0,"top10":[{"address":"0x612c7271c58d0829c0df017446b3ae61b13a5402","estimate":5166,"exact":5132},{"address":"0x0f30893b58119be199c90293c6d8ef8c5c303f66","estimate":206,"exact":195},{"address":"0x7de1c609ef5d748a01e374ac131f5404766057f2","estimate":206,"exact":187},{"address":"0x06d6583aed502b076cd6d5d9c27b2f36fb954e95","estimate":166,"exact":157},{"address":"0x5d2bd24c4aadb9d6594d2553516478fd8d0be517","estimate":165,"exact":141},{"address":"0x17f3d9033257065e86b1e3c5f26dcb8f1c0b9dc2","estimate":164,"exact":154},{"address":"0x583ce8771e20770afd27c2c1ce387da7bfc88234","estimate":163,"exact":156},{"address":"0x4ce38b984a01b60bdcfa35fe4c81bb59d9a2b1a0","estimate":154,"exact":136},{"address":"0x6fb68ebef5a8da16f7a29f31c789afeb87b76ef4","estimate":148,"exact":114},{"address":"0x413bfd834bbfbb52fbd8056fc87576bbf588abef","estimate":131,"exact":109}]},"bloom":{"m":142185,"k":7,"n_inserted":7417,"theoretical_fp":0.000251},"tumbling":[{"t":"10:35","tx":750,"gas":23.65,"senders":706},{"t":"10:36","tx":750,"gas":23.57,"senders":671},{"t":"10:37","tx":750,"gas":24.64,"senders":718},{"t":"10:38","tx":750,"gas":24.34,"senders":694},{"t":"10:39","tx":1350,"gas":24.16,"senders":997},{"t":"10:40","tx":750,"gas":24.03,"senders":476},{"t":"10:41","tx":750,"gas":24.17,"senders":596},{"t":"10:42","tx":750,"gas":23.34,"senders":743},{"t":"10:43","tx":750,"gas":23.46,"senders":760},{"t":"10:44","tx":1350,"gas":23.71,"senders":1201},{"t":"10:45","tx":750,"gas":24.36,"senders":683},{"t":"10:46","tx":750,"gas":24.66,"senders":702},{"t":"10:47","tx":750,"gas":23.91,"senders":679},{"t":"10:48","tx":750,"gas":23.68,"senders":743},{"t":"10:49","tx":1350,"gas":23.74,"senders":1283},{"t":"10:50","tx":750,"gas":24.58,"senders":690},{"t":"10:51","tx":750,"gas":23.75,"senders":706},{"t":"10:52","tx":750,"gas":23.83,"senders":702},{"t":"10:53","tx":750,"gas":24.11,"senders":702},{"t":"10:54","tx":1200,"gas":23.97,"senders":1115}],"alerts":{"flagged_address":11,"gas_spike":1}},"live":{"mode":"live (Ethereum mainnet via Alchemy, read-only)","blocks":[{"block":26183718,"time_utc":"2026-10-13T12:57:47Z","tx":240},{"block":26183719,"time_utc":"2026-10-13T12:57:59Z","tx":276},{"block":26183720,"time_utc":"2026-10-13T12:58:11Z","tx":183},{"block":26183721,"time_utc":"2026-10-13T12:58:23Z","tx":406},{"block":26183722,"time_utc":"2026-10-13T12:58:35Z","tx":173},{"block":26183723,"time_utc":"2026-10-13T12:58:47Z","tx":390},{"block":26183724,"time_utc":"2026-10-13T12:58:59Z","tx":271},{"block":26183725,"time_utc":"2026-10-13T12:59:11Z","tx":341},{"block":26183726,"time_utc":"2026-10-13T12:59:23Z","tx":340},{"block":26183727,"time_utc":"2026-10-13T12:59:35Z","tx":235}],"block_gaps_s":[12.0,12.0,12.0,12.0,12.0,12.0,12.0,12.0,12.0],"mean_gap_s":12.0,"tx_total":2855},"chain":{"address":"0x3d6707d3Ca4d5b7F2A39B0FD6b3B68e561E1964A","deploy_tx":"0xb3c12ac71db3b636b353d42d166cc0c396b19032b1270ad8342875e993a60852","deploy_gas":5010731,"published":[{"dt":"2025-01-29","day":20250129,"root":"0x4140b10844c0871898723bab3c77cb6859a673f195db4822add17505cb19b6d7","leaf_count":2886,"tx_hash":"0x9d08f6bc6d859b62b414103aab312d365cdd20c84cdcbb112bef07fa822aae95","gas_used":573630,"block":11905832},{"dt":"2025-01-30","day":20250130,"root":"0x6a55bf10864f2bc0982bc3d7963300961fc0f34ab54c9681f7228bb49660d54f","leaf_count":2942,"tx_hash":"0x4cb82bfb8c2d9f1d875b9763c9586945e6c0ecbc60b7ad88dff388c3937b18b5","gas_used":377828,"block":11905833},{"dt":"2025-01-31","day":20250131,"root":"0x2ea944e95104302ac538a2ff01bea01a7ef8c9adcb9cdfb7a2e431ef331dbe29","leaf_count":3029,"tx_hash":"0x1f417a2eec995ae6b8665ec15349edcabd7f4913656b8546800a10220e9adce0","gas_used":377840,"block":11905834}],"gas_vs_rows":[{"n_leaves":10,"gas_used":139542},{"n_leaves":1000,"gas_used":105428},{"n_leaves":100000,"gas_used":105464},{"n_leaves":1000000,"gas_used":105476}]},"merkle":{"day":"2025-01-31","root":"0x2ea944e95104302ac538a2ff01bea01a7ef8c9adcb9cdfb7a2e431ef331dbe29","leaf_count":3029,"rows":[{"index":2958,"row":"2025-01-31|summary|tx_count|1172912","proof":["0xe625df75c52c5ae9a30146ddec02ebeb8b700e8b4ed2dada004671bf546ae609","0xbbe612c815b462db050834a58e0500a435e022ea905bb2918f275d7b0d1f24ff","0xd837e6a7b3c372509a65b8e7d42cfb83c93a8d6099a006307ab3e45d3f68adde","0x94edc72f04dc81f0b9faa48e6908a7bb80b4f8eeb5974ddbeeef78d8a144bfe9","0x0e7f56ca5a0bb6c4cc38f003616850ffd5209cd3a0091817d21c3ad4c8fba982","0xe73fd5e384e9c5706daafa3119635d35475fa91db3302b3feaeb33f12f4ffa1a","0xa342f814cda8b7ff7b83090044638fea9554070bc729aa89b84fec85f85cabd3","0xf1d46dc29fd7bddc3fd89fb091d69ced0c7d99043f9c7c64f3e92da1c2e6a54e","0x0279043d1ba00261752d49e6d28983b83048294280ab5d45e155474e78173ac8","0x297d6397b1a414e6ee44f48489eb21b0fed9cdd2a247f91c1c33122c911447c6","0x7e76ef295c636a3ab5b8a6bc81cf70a5d2bd01e071776cd966abe1b2d51ea4dd"]},{"index":2952,"row":"2025-01-31|summary|active_senders|389746","proof":["0x305c94fd4b2ebf47a6acae8c5437677e06357fece086700c8f99d81c9cfc9725","0x6d7f3a2bc48b87160fec45bca1be799002a7d1f42dd251c6cbaa5b11687edd27","0x3197ccc87ff7b6476d2a30e2de0633a77deb5f52d08d8cf27ca44a0939b0656e","0x94edc72f04dc81f0b9faa48e6908a7bb80b4f8eeb5974ddbeeef78d8a144bfe9","0x0e7f56ca5a0bb6c4cc38f003616850ffd5209cd3a0091817d21c3ad4c8fba982","0xe73fd5e384e9c5706daafa3119635d35475fa91db3302b3feaeb33f12f4ffa1a","0xa342f814cda8b7ff7b83090044638fea9554070bc729aa89b84fec85f85cabd3","0xf1d46dc29fd7bddc3fd89fb091d69ced0c7d99043f9c7c64f3e92da1c2e6a54e","0x0279043d1ba00261752d49e6d28983b83048294280ab5d45e155474e78173ac8","0x297d6397b1a414e6ee44f48489eb21b0fed9cdd2a247f91c1c33122c911447c6","0x7e76ef295c636a3ab5b8a6bc81cf70a5d2bd01e071776cd966abe1b2d51ea4dd"]},{"index":2955,"row":"2025-01-31|summary|median_gas_gwei|4.000000","proof":["0xd8a9e81714ae7179011c38be1400ddc0eb92343b4bdd3cb96d8875ad925b4310","0x3740996bc6829b73a019015abb763b0812efd2f0ad0287074385db72624b9f8f","0x3197ccc87ff7b6476d2a30e2de0633a77deb5f52d08d8cf27ca44a0939b0656e","0x94edc72f04dc81f0b9faa48e6908a7bb80b4f8eeb5974ddbeeef78d8a144bfe9","0x0e7f56ca5a0bb6c4cc38f003616850ffd5209cd3a0091817d21c3ad4c8fba982","0xe73fd5e384e9c5706daafa3119635d35475fa91db3302b3feaeb33f12f4ffa1a","0xa342f814cda8b7ff7b83090044638fea9554070bc729aa89b84fec85f85cabd3","0xf1d46dc29fd7bddc3fd89fb091d69ced0c7d99043f9c7c64f3e92da1c2e6a54e","0x0279043d1ba00261752d49e6d28983b83048294280ab5d45e155474e78173ac8","0x297d6397b1a414e6ee44f48489eb21b0fed9cdd2a247f91c1c33122c911447c6","0x7e76ef295c636a3ab5b8a6bc81cf70a5d2bd01e071776cd966abe1b2d51ea4dd"]},{"index":2959,"row":"2025-01-31|top_sender|0x000000633b68f5d8d3a86593ebb815b4663bcbe0|2266","proof":["0xce5e5c8dc9e4085af48b2fb3e4503de50ee45147d076dfae226491b412087d38","0xbbe612c815b462db050834a58e0500a435e022ea905bb2918f275d7b0d1f24ff","0xd837e6a7b3c372509a65b8e7d42cfb83c93a8d6099a006307ab3e45d3f68adde","0x94edc72f04dc81f0b9faa48e6908a7bb80b4f8eeb5974ddbeeef78d8a144bfe9","0x0e7f56ca5a0bb6c4cc38f003616850ffd5209cd3a0091817d21c3ad4c8fba982","0xe73fd5e384e9c5706daafa3119635d35475fa91db3302b3feaeb33f12f4ffa1a","0xa342f814cda8b7ff7b83090044638fea9554070bc729aa89b84fec85f85cabd3","0xf1d46dc29fd7bddc3fd89fb091d69ced0c7d99043f9c7c64f3e92da1c2e6a54e","0x0279043d1ba00261752d49e6d28983b83048294280ab5d45e155474e78173ac8","0x297d6397b1a414e6ee44f48489eb21b0fed9cdd2a247f91c1c33122c911447c6","0x7e76ef295c636a3ab5b8a6bc81cf70a5d2bd01e071776cd966abe1b2d51ea4dd"]},{"index":3009,"row":"2025-01-31|whale|0x21a31ee1afc51d94c2efccaa2092ad1028285549|39594.035527","proof":["0x16c8a3cb29f3af8147d2d03686541d2049f7b7418f4b3969af02367538a28b28","0xea809812e9e7a651279433bd7e02ff548c40857c6ebe9e02ac2ec7690f99ae62","0x7f48f6de842661b7f9da50d24092f65fba9319689da2e574e17af6f948ef649b","0x0bc7409d5d7d3580f9d1faea70bbbd7b9f7cf74a7ae33fc375744b2e181ac013","0x9c004162f4133c25b26e82b33738897bc480a8818b48569eba573453f612ce96","0x9ca829adae94aade68a9d8dd0a0e5d546de7b53b1f831f36853d2ae5041b73c0","0xf1d46dc29fd7bddc3fd89fb091d69ced0c7d99043f9c7c64f3e92da1c2e6a54e","0x0279043d1ba00261752d49e6d28983b83048294280ab5d45e155474e78173ac8","0x297d6397b1a414e6ee44f48489eb21b0fed9cdd2a247f91c1c33122c911447c6","0x7e76ef295c636a3ab5b8a6bc81cf70a5d2bd01e071776cd966abe1b2d51ea4dd"]},{"index":0,"row":"2025-01-31|flagged_active|0x00000000000007736e2f9aa5630b8c812e1f3fc9|1","proof":["0xbd729cdcad0b3df92ac8a39bfb15c811f37eee3b04bdd08d9f281d75309b8947","0x8a639644d02851ec1f3327543f4244eb805c67579ce58820dcef4dc7ca78242d","0x8920e7314db24cd4360e6380d0c1def5fda274af7fd99e0413264342fc113245","0x6cbc2d322fad3057358ef8861990697e6bcc90c7355cd211e07da8ad7859b30b","0xf533f04593ccc8aa9753dd2d2c6f2663d410ef66ce41b49856ac68218a43fd69","0x8c6c161e8d411050af33803cf802d02d9a5d9a931a7709becc7f9cff248056e8","0x1cd7c35578bd4c7034cfe7af64299a0ef626bf71dfbda341fe94990ed98a93bc","0x2adb93fa9bbd95d5cbccc6c3db69fb42877bd2c9ea18b7c2c087df07923988df","0x50271b3718481dcb94ccc5c1bc1d1023c004f5af3e0f1c50a6d23e866870a894","0xd2e2d27d17c55c80a93bea21f7ba8d786f838d5e2fe5472a5ae8f2f0fb71167d","0xc0ec972a76102329652e541f6f5c0b890663b7bb075f64d73d8f0c13e68ccaa9","0x8d1bc8e983b2765d795994b11a36d1f70266913d9cc4c2d86934f470cc1e3972"]}]}}</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const NS = "http://www.w3.org/2000/svg";
+const $ = (s) => document.querySelector(s);
+const nf = new Intl.NumberFormat("en-US");
+const int = (v) => nf.format(Math.round(v));
+const dec = (v, d = 2) => Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+function compact(v) {
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M";
+  if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K";
+  return String(+v.toFixed(3));
+}
+const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const KNOWN = { "0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT (Tether)", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC" };
+const ETHERSCAN = "https://sepolia.etherscan.io";
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, s, cls, anchor, extra) {
+  const t = el("text", Object.assign({ x, y, class: cls || "tick", "text-anchor": anchor || "start" }, extra || {}), parent);
+  t.textContent = s;
+  return t;
+}
+
+/* ---------- tooltip ---------- */
+const tip = $("#tip");
+function showTip(html, x, y) {
+  tip.innerHTML = html;
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px";
+  tip.style.top = Math.max(8, top) + "px";
+}
+function hideTip() { tip.hidden = true; }
+function bindTip(node, html) {
+  node.addEventListener("mousemove", (e) => showTip(html(), e.clientX, e.clientY));
+  node.addEventListener("mouseleave", hideTip);
+  node.addEventListener("focus", () => { const r = node.getBoundingClientRect(); showTip(html(), r.left + r.width / 2, r.top); });
+  node.addEventListener("blur", hideTip);
+}
+const tipRows = (title, rows) => `<b>${esc(title)}</b><br>` + rows.map(([k, v]) => `<span class="k">${esc(k)}</span> ${esc(v)}`).join("<br>");
+
+/* ---------- scales ---------- */
+function niceRange(lo, hi, n = 4) {
+  if (hi === lo) hi = lo + 1;
+  const raw = (hi - lo) / n, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  const a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step;
+  const ticks = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return { ticks, lo: a, hi: b };
+}
+const barPath = (x, y, w, h, r) => { r = Math.max(0, Math.min(r, h, w / 2));
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+const hbarPath = (x, y, len, h, r) => { r = Math.max(0, Math.min(r, len, h / 2));
+  return `M${x},${y}H${x + len - r}Q${x + len},${y} ${x + len},${y + r}V${y + h - r}Q${x + len},${y + h} ${x + len - r},${y + h}H${x}Z`; };
+
+/* ---------- card ---------- */
+const redrawers = [];
+function tableHTML(t) {
+  const head = t.head.map((h, i) => `<th${t.num && t.num[i] ? ' class="num"' : ""}>${esc(h)}</th>`).join("");
+  const body = t.rows.map((r) => "<tr>" + r.map((c, i) => `<td${t.num && t.num[i] ? ' class="num"' : ""}>${esc(c)}</td>`).join("") + "</tr>").join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function card(slot, o) {
+  const c = document.createElement("figure");
+  c.className = "card" + (o.wide ? " wide" : "");
+  c.innerHTML = `<figcaption><h3>${o.title}</h3>${o.sub ? `<p class="sub">${o.sub}</p>` : ""}</figcaption>` +
+    (o.legend ? `<div class="legend">${o.legend.map(([c2, l]) => `<span><i style="background:var(${c2})"></i>${esc(l)}</span>`).join("")}</div>` : "") +
+    `<div class="plot"></div>` +
+    (o.table ? `<div class="twrap" hidden>${tableHTML(o.table)}</div>` : "") +
+    `<div class="foot"><span>Source: <code>${esc(o.source)}</code></span>${o.table ? '<button type="button" class="tbtn" aria-expanded="false">Show table</button>' : ""}</div>`;
+  slot.appendChild(c);
+  if (o.table) {
+    const b = c.querySelector(".tbtn"), w = c.querySelector(".twrap");
+    b.addEventListener("click", () => { w.hidden = !w.hidden; b.textContent = w.hidden ? "Show table" : "Hide table"; b.setAttribute("aria-expanded", String(!w.hidden)); });
+  }
+  const plot = c.querySelector(".plot");
+  if (o.html) { plot.innerHTML = o.html; return c; }
+  let lastW = 0;
+  const draw = (force) => {
+    const w = Math.floor(plot.clientWidth);
+    if (!w || (w === lastW && !force)) return;
+    lastW = w;
+    plot.innerHTML = "";
+    if (o.canvas) { o.draw(plot, w, o.height); return; }
+    const svg = el("svg", { width: w, height: o.height, viewBox: `0 0 ${w} ${o.height}`, role: "img", "aria-label": o.title.replace(/<[^>]+>/g, "") }, plot);
+    o.draw(svg, w, o.height);
+  };
+  new ResizeObserver(() => draw(false)).observe(plot);
+  redrawers.push(() => draw(true));
+  draw(true);
+  return c;
+}
+
+/* ---------- chart forms ---------- */
+function yAxis(svg, m, w, ih, range, fmt) {
+  const y = (v) => m.t + ih - (v - range.lo) / (range.hi - range.lo) * ih;
+  for (const t of range.ticks) {
+    el("line", { x1: m.l, x2: w - m.r, y1: y(t), y2: y(t), class: t === 0 ? "axis-l" : "grid-l" }, svg);
+    txt(svg, m.l - 6, y(t) + 3.5, fmt(t), "tick", "end");
+  }
+  return y;
+}
+function columns(svg, w, h, o) {
+  const m = { l: o.ml || 44, r: 10, t: o.mt || 22, b: 26 };
+  const iw = w - m.l - m.r, ih = h - m.t - m.b;
+  const range = niceRange(0, o.max || Math.max(...o.data.map(o.val)));
+  const y = yAxis(svg, m, w, ih, range, o.yFmt || compact);
+  if (o.refLine) {
+    el("line", { x1: m.l, x2: w - m.r, y1: y(o.refLine.v), y2: y(o.refLine.v), stroke: "var(--s2)", "stroke-width": 1.5 }, svg);
+    txt(svg, w - m.r, y(o.refLine.v) - 6, o.refLine.label, "ann", "end");
+  }
+  const n = o.data.length, band = iw / n, bw = Math.max(2, Math.min(24, band - 2));
+  const every = o.tickEvery || Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 46))));
+  o.data.forEach((d, i) => {
+    const cx = m.l + band * i + band / 2, v = o.val(d), top = y(v);
+    el("path", { d: barPath(cx - bw / 2, top, bw, m.t + ih - top, 4), fill: o.color ? o.color(d, i) : "var(--s1)" }, svg);
+    if (i % every === 0) txt(svg, cx, h - m.b + 16, o.label(d, i), "tick", "middle");
+    const a = o.annotate && o.annotate(d, i);
+    if (a) txt(svg, cx, top - 7, a, "ann", "middle");
+    const hit = el("rect", { x: m.l + band * i, y: m.t, width: band, height: ih, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+    bindTip(hit, () => o.tip(d, i));
+  });
+}
+function hbars(svg, w, h, o) {
+  const ml = Math.min(o.ml || 150, Math.floor(w * 0.42));
+  const m = { l: ml, r: o.mr || 70, t: 4, b: 4 };
+  const n = o.data.length, band = (h - m.t - m.b) / n, bh = Math.min(18, band * 0.62);
+  const max = o.max || Math.max(...o.data.map(o.val)), iw = w - m.l - m.r;
+  el("line", { x1: m.l, x2: m.l, y1: m.t, y2: h - m.b, class: "axis-l" }, svg);
+  o.data.forEach((d, i) => {
+    const yc = m.t + band * i + band / 2, len = Math.max(2, o.val(d) / max * iw);
+    txt(svg, m.l - 8, yc + 4, o.label(d, i), o.mono ? "tick mono" : "tick", "end");
+    el("path", { d: hbarPath(m.l, yc - bh / 2, len, bh, 4), fill: o.color ? o.color(d, i) : "var(--s1)" }, svg);
+    const lx = o.labelAt ? Math.max(len, o.labelAt(d) / max * iw) : len;
+    txt(svg, m.l + lx + 8, yc + 4, o.valFmt(o.val(d), d), "val", "start");
+    const hit = el("rect", { x: 0, y: m.t + band * i, width: w, height: band, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+    bindTip(hit, () => o.tip(d, i));
+  });
+}
+function lineChart(svg, w, h, o) {
+  const m = { l: o.ml || 46, r: 18, t: 18, b: 26 };
+  const iw = w - m.l - m.r, ih = h - m.t - m.b;
+  const vals = o.data.map(o.val);
+  const range = niceRange(o.zero ? 0 : Math.min(...vals), Math.max(...vals));
+  const y = yAxis(svg, m, w, ih, range, o.yFmt || compact);
+  const n = o.data.length, x = (i) => m.l + (n === 1 ? iw / 2 : iw * i / (n - 1));
+  const every = o.tickEvery || Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
+  o.data.forEach((d, i) => { if (i % every === 0 || i === n - 1) txt(svg, x(i), h - m.b + 16, o.label(d, i), "tick", "middle"); });
+  const pts = o.data.map((d, i) => [x(i), y(o.val(d))]);
+  if (o.area) el("path", { d: `M${pts[0][0]},${m.t + ih}` + pts.map((p) => `L${p[0]},${p[1]}`).join("") + `L${pts[n - 1][0]},${m.t + ih}Z`, fill: "var(--s1-wash)" }, svg);
+  el("path", { d: "M" + pts.map((p) => p.join(",")).join("L"), fill: "none", stroke: "var(--s1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  (o.marks || [n - 1]).forEach((i) => {
+    el("circle", { cx: pts[i][0], cy: pts[i][1], r: 4.5, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+    const a = o.annotate && o.annotate(o.data[i], i);
+    if (a) txt(svg, pts[i][0], pts[i][1] - 10, a, "ann", i === n - 1 ? "end" : "middle");
+  });
+  const cross = el("line", { x1: 0, x2: 0, y1: m.t, y2: m.t + ih, class: "cross", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4.5, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent", tabindex: 0, class: "hit" }, svg);
+  const at = (clientX) => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left - m.l) / (iw / Math.max(1, n - 1))))); };
+  const show = (i, cx, cy) => {
+    cross.setAttribute("x1", pts[i][0]); cross.setAttribute("x2", pts[i][0]); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", pts[i][0]); dot.setAttribute("cy", pts[i][1]); dot.setAttribute("visibility", "visible");
+    showTip(o.tip(o.data[i], i), cx, cy);
+  };
+  hit.addEventListener("mousemove", (e) => show(at(e.clientX), e.clientX, e.clientY));
+  hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+  hit.addEventListener("focus", () => { const r = svg.getBoundingClientRect(); show(n - 1, r.left + pts[n - 1][0], r.top + pts[n - 1][1]); });
+  hit.addEventListener("blur", () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+/* ---------- Keccak-256 (Ethereum's hash; not NIST SHA3-256) ---------- */
+const KECCAK_RC = [0x1n, 0x8082n, 0x800000000000808an, 0x8000000080008000n, 0x808bn, 0x80000001n, 0x8000000080008081n,
+  0x8000000000008009n, 0x8an, 0x88n, 0x80008009n, 0x8000000an, 0x8000808bn, 0x800000000000008bn, 0x8000000000008089n,
+  0x8000000000008003n, 0x8000000000008002n, 0x8000000000000080n, 0x800an, 0x800000008000000an, 0x8000000080008081n,
+  0x8000000000008080n, 0x80000001n, 0x8000000080008008n];
+const KECCAK_ROT = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61], [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]];
+const MASK64 = (1n << 64n) - 1n;
+const rotl64 = (v, n) => (n === 0 ? v : ((v << BigInt(n)) | (v >> BigInt(64 - n))) & MASK64);
+function keccakF(A) {
+  for (let round = 0; round < 24; round++) {
+    const C = [0, 1, 2, 3, 4].map((x) => A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20]);
+    for (let x = 0; x < 5; x++) {
+      const Dx = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
+      for (let y = 0; y < 5; y++) A[x + 5 * y] ^= Dx;
+    }
+    const B = new Array(25);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) B[y + 5 * ((2 * x + 3 * y) % 5)] = rotl64(A[x + 5 * y], KECCAK_ROT[x][y]);
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++)
+      A[x + 5 * y] = B[x + 5 * y] ^ ((~B[((x + 1) % 5) + 5 * y] & MASK64) & B[((x + 2) % 5) + 5 * y]);
+    A[0] ^= KECCAK_RC[round];
+  }
+}
+function keccak256(bytes) {
+  const rate = 136, len = Math.ceil((bytes.length + 1) / rate) * rate;
+  const msg = new Uint8Array(len);
+  msg.set(bytes);
+  msg[bytes.length] ^= 0x01;      // Keccak padding (SHA3 would use 0x06)
+  msg[len - 1] ^= 0x80;
+  const A = new Array(25).fill(0n);
+  for (let off = 0; off < len; off += rate) {
+    for (let i = 0; i < rate / 8; i++) {
+      let lane = 0n;
+      for (let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(msg[off + i * 8 + b]);
+      A[i] ^= lane;
+    }
+    keccakF(A);
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 4; i++) for (let b = 0; b < 8; b++) out[i * 8 + b] = Number((A[i] >> BigInt(8 * b)) & 0xffn);
+  return out;
+}
+const hexOf = (bytes) => "0x" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+function bytesOf(hex) {
+  const h = hex.replace(/^0x/, ""), out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+}
+// Same rules as chain/merkle.py and ReportRegistry.sol: leaf = keccak(utf8(row)); parent = keccak(min || max)
+function merkleVerify(row, proof) {
+  let cur = hexOf(keccak256(new TextEncoder().encode(row)));
+  const steps = [{ label: "leaf", hash: cur }];
+  for (const sib of proof) {
+    const [lo, hi] = cur < sib ? [cur, sib] : [sib, cur];
+    const buf = new Uint8Array(64);
+    buf.set(bytesOf(lo), 0); buf.set(bytesOf(hi), 32);
+    cur = hexOf(keccak256(buf));
+    steps.push({ label: "with " + sib.slice(0, 10) + "…", hash: cur });
+  }
+  return { root: cur, steps };
+}
+
+/* ---------- data helpers ---------- */
+const S = D.silver, A = D.analytics, B = D.bench, MR = D.mr, K = D.kmeans, ST = D.stream, CH = D.chain, MK = D.merkle;
+const jobs = Object.fromEntries(D.job_times.map((j) => [j.job, j.s]));
+const totalJobS = D.job_times.reduce((a, j) => a + j.s, 0);
+const speedup = B.mr_median_s / B.spark_median_s;
+const shuffleCut = 1 - MR.with_combiner.reduce_shuffle_bytes / MR.no_combiner.reduce_shuffle_bytes;
+const P = A.prescriptive, PRED = A.predictive;
+
+/* ---------- header ---------- */
+$("#chips").innerHTML = [
+  `Ethereum mainnet · ${D.daily[0].dt} to ${D.daily[D.daily.length - 1].dt}`,
+  "Google Cloud Dataproc · 1 master + 4 workers",
+  "Sepolia testnet contract",
+].map((c) => `<span class="chip">${esc(c)}</span>`).join("");
+
+const kpis = [
+  ["Transactions processed", compact(S.rows_in), `${int(S.rows_in)} raw, ${S.days} days`],
+  ["Raw data (bronze)", (S.bronze_bytes / 1e9).toFixed(2) + " GB", "Parquet exported from BigQuery"],
+  ["Full batch pipeline", Math.round(totalJobS / 60) + " min", `${D.job_times.length} cluster jobs, 20 vCPUs`],
+  ["Spark vs MapReduce", speedup.toFixed(2) + "× faster", `median ${Math.round(B.spark_median_s)} s vs ${Math.round(B.mr_median_s)} s`],
+  ["Addresses profiled", compact(D.gold_stats.address_features), `${int(K.n_flagged)} flagged as unusual`],
+  ["Reports on-chain", CH.published.length + " days", "rows verify, edits are rejected"],
+];
+$("#kpis").innerHTML = kpis.map(([l, v, n]) => `<div class="kpi"><span class="label">${esc(l)}</span><span class="value">${esc(v)}</span><span class="note">${esc(n)}</span></div>`).join("");
+
+/* ---------- pipeline ---------- */
+const stage = (name, what, num, time, cls) => `<li class="${cls || ""}"><span class="name">${esc(name)}</span><span class="what">${esc(what)}</span>${num ? `<span class="num">${esc(num)}</span>` : ""}${time ? `<span class="time">${esc(time)}</span>` : ""}</li>`;
+const secs = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
+$("#flow-batch").innerHTML = [
+  stage("Source", "BigQuery public dataset, exported with one SQL query", "9.9 GB scanned", "free tier"),
+  stage("Bronze", "Raw Parquet in Cloud Storage, never edited", `${(S.bronze_bytes / 1e9).toFixed(2)} GB`, "117 files"),
+  stage("Silver", "Spark: types, dedup, drop failed tx, one file per day", `${compact(S.rows_out)} rows`, secs(jobs.silver)),
+  stage("Gold", "Daily, hourly and per-address aggregate tables", `${compact(D.gold_stats.address_features)} profiles`, secs(jobs.gold)),
+  stage("Analytics", "Hive, MapReduce, PageRank, KMeans, four analytics types", "5 engines", secs(jobs.hive + jobs.mapreduce + jobs.spark_count + jobs.pagerank + jobs.kmeans + jobs.analytics)),
+  stage("Daily report", "Sorted text rows per day: summary, top senders, whales, flags", `${S.days} reports`, secs(jobs.daily_report)),
+  stage("Merkle root", "Keccak-256 tree over each day's rows", "32 bytes per day", ""),
+  stage("Sepolia", "ReportRegistry contract stores the root", `${CH.published.length} roots published`, "", "chain"),
+].join("");
+$("#flow-stream").innerHTML = [
+  stage("Poller", "Fetches each new block (live mainnet or mock)", `every ${D.live.mean_gap_s} s`, "atomic file writes"),
+  stage("Stream folder", "One JSON-lines file per block", `${int(ST.n_items)} tx`, "cluster demo"),
+  stage("Structured Streaming", "1-minute tumbling and 5-minute sliding windows", `${ST.tumbling.length} windows shown`, "5 s trigger"),
+  stage("Sketches", "Count-Min, HyperLogLog, Bloom filter, reservoir sample", `${(ST.cms.memory_bytes / 1024).toFixed(0)} KB Count-Min`, ""),
+  stage("Alerts", "Z-score spikes and Bloom-filter hits on flagged addresses", `${Object.values(ST.alerts).reduce((a, b) => a + b, 0)} alerts`, ""),
+].join("");
+
+/* ---------- the month ---------- */
+const avgTx = S.rows_out / S.days;
+const busiest = D.daily.reduce((a, d) => (d.tx > a.tx ? d : a));
+$("#month-lede").textContent = `${int(S.rows_out)} successful transactions after cleaning, about ${compact(avgTx)} a day. ${int(S.failed_removed)} failed transactions were removed and ${int(S.contract_creations)} new contracts were created.`;
+const gm = $("#g-month");
+card(gm, {
+  title: "Transactions per day", sub: `Busiest day ${busiest.dt}: ${int(busiest.tx)} transactions`, height: 230, wide: true,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => columns(svg, w, h, {
+    data: D.daily, val: (d) => d.tx, label: (d) => d.dt.slice(8), tickEvery: w < 560 ? 5 : 2,
+    color: (d) => (d === busiest ? "var(--s1)" : "var(--s1)"),
+    annotate: (d) => (d === busiest ? compact(d.tx) : ""),
+    tip: (d) => tipRows(d.dt, [["transactions", int(d.tx)], ["active senders", int(d.senders)], ["plain transfers", (d.plain * 100).toFixed(1) + "%"], ["median gas", dec(d.median_gas) + " gwei"]]),
+  }),
+  table: { head: ["Day", "Transactions", "Active senders", "Plain transfer %", "ETH moved", "Median gas (gwei)", "New contracts"], num: [0, 1, 1, 1, 1, 1, 1],
+    rows: D.daily.map((d) => [d.dt, int(d.tx), int(d.senders), (d.plain * 100).toFixed(1), int(d.eth), dec(d.median_gas, 3), int(d.creations)]) },
+});
+card(gm, {
+  title: "Active senders per day", sub: "Distinct addresses that sent at least one transaction", height: 210,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: D.daily, val: (d) => d.senders, label: (d) => d.dt.slice(8), area: true, zero: true,
+    annotate: (d, i) => (i === D.daily.length - 1 ? compact(d.senders) : ""),
+    tip: (d) => tipRows(d.dt, [["active senders", int(d.senders)]]) }),
+  table: { head: ["Day", "Active senders"], num: [0, 1], rows: D.daily.map((d) => [d.dt, int(d.senders)]) },
+});
+card(gm, {
+  title: "Plain ETH transfers, share of all transactions", sub: "Transactions that used exactly 21,000 gas; the rest call smart contracts", height: 210,
+  source: "data_gcp/gold/daily_stats",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: D.daily, val: (d) => d.plain * 100, label: (d) => d.dt.slice(8), yFmt: (v) => v + "%",
+    annotate: (d, i) => (i === D.daily.length - 1 ? (d.plain * 100).toFixed(1) + "%" : ""),
+    tip: (d) => tipRows(d.dt, [["plain transfers", (d.plain * 100).toFixed(1) + "%"], ["contract calls", ((1 - d.plain) * 100).toFixed(1) + "%"]]) }),
+  table: { head: ["Day", "Plain transfer %"], num: [0, 1], rows: D.daily.map((d) => [d.dt, (d.plain * 100).toFixed(2)]) },
+});
+
+/* ---------- gas ---------- */
+const gg = $("#g-gas");
+const peakHour = D.hour_profile.reduce((a, d) => (d.median_gas > a.median_gas ? d : a)).hour;
+const hh = (h) => String(h).padStart(2, "0") + ":00";
+const call = document.createElement("div");
+call.className = "callout wide";
+call.innerHTML = `<span class="big">Send at ${hh(P.cheapest_hour_utc)} UTC</span><p>${(P.savings_vs_peak_pct).toFixed(1)}% cheaper than the ${hh(peakHour)} UTC peak (median ${dec(P.cheapest_gas_gwei, 2)} vs ${dec(P.peak_gas_gwei, 2)} gwei), and ${P.savings_vs_median_pct}% below the average hour. Busier hours cost more: the hourly correlation between transaction count and gas price is ${dec(A.diagnostic.hourly_tx_gas_corr, 2)}.</p>`;
+gg.appendChild(call);
+card(gg, {
+  title: "Median gas price by hour of day (UTC)", sub: "Median of the hourly medians across the month", height: 230,
+  source: "data_gcp/gold/hour_of_day_profile",
+  legend: [["--s1", "cheapest hour"], ["--s2", "peak hour"], ["--dim", "other hours"]],
+  draw: (svg, w, h) => columns(svg, w, h, { data: D.hour_profile, val: (d) => d.median_gas, label: (d) => String(d.hour).padStart(2, "0"),
+    tickEvery: w < 560 ? 6 : 3, yFmt: (v) => String(+v.toFixed(1)),
+    color: (d) => (d.hour === P.cheapest_hour_utc ? "var(--s1)" : d.hour === peakHour ? "var(--s2)" : "var(--dim)"),
+    annotate: (d) => (d.hour === P.cheapest_hour_utc || d.hour === peakHour ? dec(d.median_gas, 2) : ""),
+    tip: (d) => tipRows(`${String(d.hour).padStart(2, "0")}:00 UTC`, [["median gas", dec(d.median_gas, 3) + " gwei"], ["avg tx in the hour", int(d.avg_tx)]]) }),
+  table: { head: ["Hour (UTC)", "Median gas (gwei)", "Avg transactions"], num: [0, 1, 1], rows: D.hour_profile.map((d) => [String(d.hour).padStart(2, "0") + ":00", dec(d.median_gas, 3), int(d.avg_tx)]) },
+});
+card(gg, {
+  title: "Predicting next hour's gas price", sub: `Linear regression on hour and current gas, trained on the first 80% of hours. It ${PRED.beats_baseline ? "beats" : "does not beat"} the simple guess that next hour equals this hour (R² ${dec(PRED.r2, 2)}).`,
+  height: 170, source: "results_gcp/analytics_types.json",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: [{ n: "Linear regression", v: PRED.rmse }, { n: "Baseline: same as now", v: PRED.baseline_rmse }],
+    label: (d) => d.n, val: (d) => d.v, ml: 160, valFmt: (v) => "RMSE " + dec(v, 2) + " gwei",
+    color: (d, i) => (i === 0 ? "var(--s1)" : "var(--dim)"), mr: 116,
+    tip: (d) => tipRows(d.n, [["RMSE", dec(d.v, 4) + " gwei"], ["lower is better", ""]]) }),
+  table: { head: ["Model", "RMSE (gwei)", "MAE (gwei)", "R²"], num: [0, 1, 1, 1], rows: [["Linear regression", dec(PRED.rmse, 4), dec(PRED.mae, 4), dec(PRED.r2, 4)], ["Baseline (next = current)", dec(PRED.baseline_rmse, 4), "", ""]] },
+});
+
+/* ---------- engines ---------- */
+const ge = $("#g-engines");
+card(ge, {
+  title: `Spark is ${speedup.toFixed(2)}× faster`, sub: "Count transactions per sender over 37 million edges. Median of three runs; each run shown as a dot.",
+  height: 190, source: "results_gcp/bench_mr_vs_spark.json",
+  legend: [["--dim", "MapReduce with combiner"], ["--s2", "Spark reduceByKey"]],
+  draw: (svg, w, h) => {
+    const data = [{ n: "MapReduce", v: B.mr_median_s, runs: B.mr_times_s, c: "var(--dim)" }, { n: "Spark", v: B.spark_median_s, runs: B.spark_times_s, c: "var(--s2)" }];
+    const max = Math.max(...B.mr_times_s, ...B.spark_times_s) * 1.05;
+    hbars(svg, w, h, { data, label: (d) => d.n, val: (d) => d.v, max, ml: 100, mr: 70, valFmt: (v) => "median " + Math.round(v) + " s", color: (d) => d.c,
+      labelAt: (d) => Math.max(...d.runs),
+      tip: (d) => tipRows(d.n, [["median", dec(d.v, 1) + " s"], ["runs", d.runs.map((r) => dec(r, 1)).join(", ") + " s"]]) });
+    const ml = Math.min(100, Math.floor(w * 0.42)), iw = w - ml - 70, band = (h - 8) / 2;
+    data.forEach((d, i) => d.runs.forEach((r) => el("circle", { cx: ml + r / max * iw, cy: 4 + band * i + band / 2, r: 3.5, fill: "var(--ink)", stroke: "var(--surface)", "stroke-width": 1.5, "pointer-events": "none" }, svg)));
+  },
+  table: { head: ["Engine", "Run 1 (s)", "Run 2 (s)", "Run 3 (s)", "Median (s)"], num: [0, 1, 1, 1, 1],
+    rows: [["MapReduce (with combiner)", ...B.mr_times_s.map((v) => dec(v, 1)), dec(B.mr_median_s, 1)], ["Spark reduceByKey", ...B.spark_times_s.map((v) => dec(v, 1)), dec(B.spark_median_s, 1)]] },
+});
+card(ge, {
+  title: `The combiner cuts shuffled data by ${Math.round(shuffleCut * 100)}%`, sub: "MapReduce counters. The combiner pre-sums counts on each mapper before data crosses the network.",
+  height: 190, source: "results_gcp/mapreduce_counters.json",
+  legend: [["--dim", "without combiner"], ["--s1", "with combiner"]],
+  draw: (svg, w, h) => hbars(svg, w, h, { data: [
+      { n: "Shuffle, no combiner", v: MR.no_combiner.reduce_shuffle_bytes / 1e9, c: "var(--dim)" },
+      { n: "Shuffle, combiner", v: MR.with_combiner.reduce_shuffle_bytes / 1e9, c: "var(--s1)" }],
+    label: (d) => d.n, val: (d) => d.v, ml: 150, valFmt: (v) => dec(v, 2) + " GB", color: (d) => d.c,
+    tip: (d) => tipRows(d.n, [["reduce shuffle", dec(d.v, 3) + " GB"]]) }),
+  table: { head: ["Counter", "No combiner", "With combiner"], num: [0, 1, 1], rows: [
+    ["Map output records", int(MR.no_combiner.map_output_records), int(MR.with_combiner.map_output_records)],
+    ["Combine output records", int(MR.no_combiner.combine_output_records || 0), int(MR.with_combiner.combine_output_records)],
+    ["Reduce input records", int(MR.no_combiner.reduce_input_records), int(MR.with_combiner.reduce_input_records)],
+    ["Reduce shuffle bytes", int(MR.no_combiner.reduce_shuffle_bytes), int(MR.with_combiner.reduce_shuffle_bytes)]] },
+});
+card(ge, {
+  title: `Batch jobs on the cluster: ${Math.round(totalJobS / 60)} minutes in total`, sub: "Wall-clock time per job submission, including scheduling", height: 260, wide: true,
+  source: "results_gcp/gcp_job_times.tsv",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: D.job_times, label: (d) => d.job.replace("_", " "), val: (d) => d.s, ml: 120, valFmt: (v) => secs(v),
+    tip: (d) => tipRows(d.job, [["time", secs(d.s)]]) }),
+  table: { head: ["Job", "Seconds"], num: [0, 1], rows: D.job_times.map((j) => [j.job, j.s]) },
+});
+
+/* ---------- network ---------- */
+const gn = $("#g-network");
+card(gn, {
+  title: "Top 10 addresses by PageRank", sub: "Contracts that many senders interact with rank highest. Named where the address is a well-known token contract.",
+  height: 300, wide: true, source: "results_gcp/pagerank_top.csv",
+  draw: (svg, w, h) => hbars(svg, w, h, { data: D.pagerank, label: (d) => (KNOWN[d.address] ? KNOWN[d.address] + "  " : "") + (w < 600 ? short(d.address) : d.address.slice(0, 18) + "…"),
+    val: (d) => d.rank, mono: true, ml: w < 600 ? 150 : 300, valFmt: (v) => int(v),
+    color: (d, i) => (i === 0 ? "var(--s1)" : "var(--s1)"),
+    tip: (d) => tipRows(KNOWN[d.address] || "address", [["address", d.address], ["PageRank", dec(d.rank, 1)]]) }),
+  table: { head: ["Rank", "Address", "Known as", "PageRank"], num: [1, 0, 0, 1], rows: D.pagerank.map((d, i) => [i + 1, d.address, KNOWN[d.address] || "", dec(d.rank, 2)]) },
+});
+
+/* ---------- anomalies ---------- */
+const ga = $("#g-anom");
+card(ga, {
+  title: "Choosing the number of clusters", sub: `Silhouette score on a 5% sample (higher means better-separated clusters). Best k = ${K.best_k}.`, height: 210,
+  source: "results_gcp/kmeans_k_selection.json",
+  draw: (svg, w, h) => lineChart(svg, w, h, { data: K.k_results, val: (d) => d.silhouette, label: (d) => "k=" + d.k, yFmt: (v) => dec(v, 2),
+    marks: [K.k_results.findIndex((d) => d.k === K.best_k)], annotate: (d) => (d.k === K.best_k ? "best " + dec(d.silhouette, 3) : ""),
+    tip: (d) => tipRows("k = " + d.k, [["silhouette", dec(d.silhouette, 4)]]) }),
+  table: { head: ["k", "Silhouette"], num: [1, 1], rows: K.k_results.map((d) => [d.k, dec(d.silhouette, 4)]) },
+});
+card(ga, {
+  title: "Addresses in feature space (PCA)", sub: `${int(D.pca_counts.normal + D.pca_counts.flagged)} addresses in the plot sample; ${int(K.n_flagged)} flagged overall (${(K.n_flagged / K.n_addresses * 100).toFixed(1)}% of ${compact(K.n_addresses)}). A random sample of each group is drawn; axes are clipped at the extremes, so far outliers sit on the border.`,
+  height: 260, canvas: true, source: "data_gcp/gold/cluster_viz",
+  legend: [["--dim", "normal"], ["--s2", "flagged as unusual"]],
+  draw: (plot, w, h) => {
+    const cv = document.createElement("canvas"), dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px";
+    cv.setAttribute("role", "img"); cv.setAttribute("aria-label", "Scatter of addresses on two principal components; flagged addresses lie at the edges");
+    plot.appendChild(cv);
+    const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement), col = (v) => css.getPropertyValue(v).trim();
+    const m = 28, xs = D.pca.map((p) => p.x), ys = D.pca.map((p) => p.y);
+    const qx = (a) => a.slice().sort((p, q) => p - q), sx = qx(xs), sy = qx(ys), pick = (s, f) => s[Math.floor(f * (s.length - 1))];
+    const x0 = pick(sx, 0.002), x1 = pick(sx, 0.995), y0 = pick(sy, 0.002), y1 = pick(sy, 0.995);
+    const X = (v) => m + (Math.min(Math.max(v, x0), x1) - x0) / (x1 - x0) * (w - 2 * m);
+    const Y = (v) => h - m - (Math.min(Math.max(v, y0), y1) - y0) / (y1 - y0) * (h - 2 * m);
+    ctx.strokeStyle = col("--line"); ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const gx = m + i * (w - 2 * m) / 4, gy = m + i * (h - 2 * m) / 4; ctx.beginPath(); ctx.moveTo(gx, m); ctx.lineTo(gx, h - m); ctx.stroke(); ctx.beginPath(); ctx.moveTo(m, gy); ctx.lineTo(w - m, gy); ctx.stroke(); }
+    ctx.fillStyle = col("--muted"); ctx.font = "11px " + col("--font-sans");
+    ctx.fillText("principal component 1 →", m, h - 8); ctx.save(); ctx.translate(12, h - m); ctx.rotate(-Math.PI / 2); ctx.fillText("principal component 2 →", 0, 0); ctx.restore();
+    const drawPts = (flag, color, r) => { ctx.fillStyle = color; ctx.globalAlpha = flag ? 0.85 : 0.5;
+      for (const p of D.pca) if (p.f === flag) { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), r, 0, 7); ctx.fill(); } ctx.globalAlpha = 1; };
+    drawPts(false, col("--dim"), 2.2); drawPts(true, col("--s2"), 2.8);
+    cv.addEventListener("mousemove", (e) => {
+      const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+      let best = null, bd = 144;
+      for (const p of D.pca) { const d2 = (X(p.x) - mx) ** 2 + (Y(p.y) - my) ** 2; if (d2 < bd) { bd = d2; best = p; } }
+      if (best) showTip(tipRows(best.f ? "flagged address" : "normal address", [["PC1", dec(best.x, 2)], ["PC2", dec(best.y, 2)]]), e.clientX, e.clientY); else hideTip();
+    });
+    cv.addEventListener("mouseleave", hideTip);
+  },
+});
+const prof = K.profiles;
+card(ga, {
+  title: "What each cluster looks like", sub: "Mean of the raw features per cluster. High nonce with few counterparties suggests automated senders.", wide: true,
+  source: "results_gcp/kmeans_clusters.csv",
+  html: `<div class="twrap" style="max-height:none">${tableHTML({ head: ["Cluster", "Tx sent", "Tx received", "ETH sent", "Counterparties", "Max nonce", "Avg gas (gwei)", "Plain share", "Active hours"], num: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    rows: prof.map((p) => [p.cluster, int(p.tx_out), int(p.tx_in), dec(p.eth_out, 1), int(p.distinct_counterparties), int(p.max_nonce), dec(p.avg_gas_gwei, 2), dec(p.plain_share, 2), dec(p.active_hours, 1)]) })}</div>`,
+});
+const ev = D.mock_eval.mock_eval;
+if (ev) {
+  card(ga, {
+    title: "Does it find known anomalies?", sub: `On synthetic data with ${ev.planted_evaluable} planted anomalies (8 bots, a 6-address wash-trading ring, 15 whales), KMeans flagged ${ev.true_positives} of them.`,
+    height: 150, source: "results/kmeans_eval_mock.json",
+    draw: (svg, w, h) => hbars(svg, w, h, { data: [{ n: "Recall: bots", v: ev.recall_bots }, { n: "Recall: wash ring", v: ev.recall_wash_ring }, { n: "Recall: whales", v: ev.recall_whales }, { n: "Precision", v: ev.precision }],
+      label: (d) => d.n, val: (d) => d.v, max: 1, ml: 130, valFmt: (v) => dec(v, 2), color: (d) => (d.n === "Precision" ? "var(--dim)" : "var(--s1)"),
+      tip: (d) => tipRows(d.n, [["value", dec(d.v, 2)]]) }),
+    table: { head: ["Measure", "Value"], num: [0, 1], rows: [["Recall (all planted)", dec(ev.recall, 2)], ["Recall: bots", dec(ev.recall_bots, 2)], ["Recall: wash ring", dec(ev.recall_wash_ring, 2)], ["Recall: whales", dec(ev.recall_whales, 2)], ["Precision", dec(ev.precision, 2)], ["Flagged", int(D.mock_eval.n_flagged)]] },
+  });
+  const note = document.createElement("div");
+  note.className = "callout";
+  note.innerHTML = `<span class="big">Recall ${dec(ev.recall, 2)}, precision ${dec(ev.precision, 2)}</span><p>The rule flags a fixed budget of about 0.5% of addresses (${int(D.mock_eval.n_flagged)} of ${int(D.mock_eval.n_addresses)}), but only ${ev.planted_evaluable} true anomalies exist, so ${dec(ev.planted_evaluable / D.mock_eval.n_flagged, 2)} is the best precision possible at this budget. KMeans reached it while missing none.</p>`;
+  ga.appendChild(note);
+}
+
+/* ---------- streaming ---------- */
+const hll = ST.hll, cms = ST.cms;
+$("#s-stream").innerHTML = [
+  ["HyperLogLog distinct senders", `${int(hll.estimate)} vs ${int(hll.exact)}`, `estimate vs exact: ${(hll.rel_error * 100).toFixed(2)}% error, using 16,384 registers`],
+  ["Count-Min Sketch", `${(cms.memory_bytes / 1024).toFixed(0)} KB`, `${(cms.fraction_within_bound * 100).toFixed(0)}% of counts within ε·N = ${int(cms.error_bound)}, never under`],
+  ["Bloom filter", `${int(ST.bloom.n_inserted)} addresses`, `KMeans-flagged set; no false negatives, false-positive rate ${(ST.bloom.theoretical_fp * 100).toFixed(1)}%`],
+  ["Live mainnet check", `${D.live.blocks.length} blocks, ${D.live.mean_gap_s} s apart`, `${int(D.live.tx_total)} transactions, blocks ${D.live.blocks[0].block}–${D.live.blocks[D.live.blocks.length - 1].block}`],
+].map(([l, v, n]) => `<div class="stat"><span class="label">${esc(l)}</span><span class="value">${esc(v)}</span><span class="note">${esc(n)}</span></div>`).join("");
+const gs = $("#g-stream");
+card(gs, {
+  title: "Transactions per 1-minute window", sub: "Tumbling windows from the Structured Streaming job on the cluster (mock blocks, event time)", height: 210,
+  source: "results_gcp/stream/latest_tumbling.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: ST.tumbling, val: (d) => d.tx, label: (d) => d.t, tickEvery: w < 560 ? 5 : 3,
+    tip: (d) => tipRows("window " + d.t, [["transactions", int(d.tx)], ["distinct senders (HLL)", int(d.senders)], ["avg gas", dec(d.gas, 2) + " gwei"]]) }),
+  table: { head: ["Window start", "Transactions", "Distinct senders", "Avg gas (gwei)"], num: [0, 1, 1, 1], rows: ST.tumbling.map((d) => [d.t, int(d.tx), int(d.senders), dec(d.gas, 2)]) },
+});
+card(gs, {
+  title: "Count-Min never overestimates by more than ε·N", sub: `How far the sketch's count exceeds the exact count for the 10 busiest senders, against the guaranteed bound ε·N = ${dec(cms.error_bound, 1)} (ε = ${cms.eps}, N = ${int(ST.n_items)}).`, height: 210,
+  source: "results_gcp/stream/sketch_metrics.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: cms.top10, val: (d) => d.estimate - d.exact, label: (d, i) => "#" + (i + 1),
+    max: cms.error_bound * 1.15, refLine: { v: cms.error_bound, label: "bound " + dec(cms.error_bound, 0) },
+    tip: (d, i) => tipRows("sender #" + (i + 1), [["address", short(d.address)], ["exact", int(d.exact)], ["estimate", int(d.estimate)], ["over by", int(d.estimate - d.exact)]]) }),
+  table: { head: ["#", "Address", "Exact", "Estimate", "Over by"], num: [1, 0, 1, 1, 1], rows: cms.top10.map((d, i) => [i + 1, d.address, int(d.exact), int(d.estimate), int(d.estimate - d.exact)]) },
+});
+card(gs, {
+  title: "Live Ethereum mainnet blocks", sub: `Fetched by the poller in live mode: one block every ${D.live.mean_gap_s} seconds`, height: 190, wide: true,
+  source: "results/stream_live_check.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: D.live.blocks, val: (d) => d.tx, label: (d) => d.time_utc.slice(11, 19), tickEvery: w < 640 ? 3 : 1,
+    tip: (d) => tipRows("block " + d.block, [["time (UTC)", d.time_utc.replace("T", " ").replace("Z", "")], ["transactions", int(d.tx)]]) }),
+  table: { head: ["Block", "Time (UTC)", "Transactions"], num: [1, 0, 1], rows: D.live.blocks.map((d) => [d.block, d.time_utc, int(d.tx)]) },
+});
+
+/* ---------- on-chain proof ---------- */
+const gp = $("#g-proof");
+const pubFor = (dt) => CH.published.find((p) => p.dt === dt);
+card(gp, {
+  title: "ReportRegistry on Sepolia", sub: "Owner-only, append-only: a day's root can be published once and never overwritten.", wide: true,
+  source: "results_gcp/chain/published_sepolia.json",
+  html: `<div style="display:grid;gap:10px">
+    <div class="cmp"><span>Contract</span><a class="addr" href="${ETHERSCAN}/address/${CH.address}" target="_blank" rel="noopener">${CH.address}</a>
+    <span>Deployed in</span><a class="addr" href="${ETHERSCAN}/tx/${CH.deploy_tx}" target="_blank" rel="noopener">${short(CH.deploy_tx)}</a></div>
+    <div class="twrap" style="max-height:none">${tableHTML({ head: ["Day", "Merkle root", "Rows", "Gas used", "Publish transaction"], num: [0, 0, 1, 1, 0],
+      rows: CH.published.map((p) => [p.dt, short(p.root), int(p.leaf_count), int(p.gas_used), p.tx_hash]) })}</div></div>`,
+});
+// link the tx hashes in the table
+gp.querySelectorAll(".card:last-child td:last-child").forEach((td) => { const h = td.textContent; td.innerHTML = `<a class="addr" href="${ETHERSCAN}/tx/${h}" target="_blank" rel="noopener">${short(h)}</a>`; });
+
+const vcard = card(gp, {
+  title: "Check a report row yourself", sub: `Rows from the ${MK.day} report (${int(MK.leaf_count)} rows). Your browser recomputes the Keccak-256 hash path that the contract's <code>verifyRow</code> runs, and compares it with the root stored on-chain. Edit the row to see the proof fail.`,
+  source: `results_gcp/merkle/${MK.day}.json`,
+  html: `<div class="verifier">
+    <label for="vpick">Report row</label>
+    <select id="vpick">${MK.rows.map((r, i) => `<option value="${i}">${esc(r.row.length > 70 ? r.row.slice(0, 68) + "…" : r.row)}</option>`).join("")}</select>
+    <label for="vtext">Row text (editable)</label>
+    <textarea id="vtext" rows="2" spellcheck="false"></textarea>
+    <div class="vbtns"><button type="button" class="btn" id="vgo">Verify against the on-chain root</button>
+      <button type="button" class="btn ghost" id="vtamper">Change one digit</button>
+      <button type="button" class="btn ghost" id="vreset">Reset row</button></div>
+    <div id="vout" aria-live="polite"></div></div>`,
+});
+vcard.classList.add("wide");
+const vpick = $("#vpick"), vtext = $("#vtext"), vout = $("#vout");
+const loadRow = () => { vtext.value = MK.rows[+vpick.value].row; vout.innerHTML = ""; };
+function runVerify() {
+  const item = MK.rows[+vpick.value], row = vtext.value;
+  const res = merkleVerify(row, item.proof);
+  const ok = res.root === MK.root;
+  const pub = pubFor(MK.day);
+  vout.innerHTML = `<span class="pill ${ok ? "good" : "bad"}">${ok ? "✓ Matches the published root" : "✗ Does not match: this row is not in the published report"}</span>
+    <div class="cmp"><span>Computed root</span><code>${res.root}</code><span>On-chain root</span><code>${MK.root}</code>
+    ${pub ? `<span>Published in</span><a class="addr" href="${ETHERSCAN}/tx/${pub.tx_hash}" target="_blank" rel="noopener">${short(pub.tx_hash)} on Sepolia</a>` : ""}</div>
+    <ol class="steps">${res.steps.map((s, i) => `<li><span class="lvl">${i === 0 ? "keccak256(row)" : "level " + i + ", " + esc(s.label)}</span> → ${s.hash}</li>`).join("")}</ol>`;
+}
+vpick.addEventListener("change", loadRow);
+$("#vgo").addEventListener("click", runVerify);
+$("#vreset").addEventListener("click", () => { loadRow(); runVerify(); });
+$("#vtamper").addEventListener("click", () => {
+  const s = vtext.value, i = s.search(/\d(?=\D*$)/);
+  if (i >= 0) vtext.value = s.slice(0, i) + ((+s[i] + 1) % 10) + s.slice(i + 1);
+  runVerify();
+});
+loadRow();
+runVerify();
+
+card(gp, {
+  title: "Publishing cost does not grow with report size", sub: "Gas to publish one root on a local chain, for reports of 10 to 1,000,000 rows. Only the 32-byte root is stored.", height: 200,
+  source: "results/chain/gas_vs_rows.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: CH.gas_vs_rows, val: (d) => d.gas_used, label: (d) => compact(d.n_leaves) + " rows",
+    annotate: (d) => compact(d.gas_used), ml: 48,
+    tip: (d, i) => tipRows(int(d.n_leaves) + " rows", [["gas used", int(d.gas_used)], ...(i === 0 ? [["note", "first publish also creates fresh storage"]] : [])]) }),
+  table: { head: ["Report rows", "Gas used"], num: [1, 1], rows: CH.gas_vs_rows.map((d) => [int(d.n_leaves), int(d.gas_used)]) },
+});
+card(gp, {
+  title: "Publishing on Sepolia", sub: "Gas per published day. The first publish pays for fresh storage; after that it is flat whatever the row count.", height: 200,
+  source: "results_gcp/chain/published_sepolia.json",
+  draw: (svg, w, h) => columns(svg, w, h, { data: CH.published, val: (d) => d.gas_used, label: (d) => d.dt.slice(5) + " · " + int(d.leaf_count) + " rows",
+    annotate: (d) => compact(d.gas_used), ml: 48,
+    tip: (d) => tipRows(d.dt, [["rows", int(d.leaf_count)], ["gas used", int(d.gas_used)], ["block", int(d.block)]]) }),
+  table: { head: ["Day", "Rows", "Gas used", "Block"], num: [0, 1, 1, 1], rows: CH.published.map((d) => [d.dt, int(d.leaf_count), int(d.gas_used), d.block]) },
+});
+
+/* ---------- checks ---------- */
+const checks = [
+  ["good", "Cloud matches local", "On the same synthetic data, the cluster produced the same row counts, gold tables, PageRank and analytics as the laptop run."],
+  ["good", `Planted anomalies found: ${ev ? ev.true_positives + " of " + ev.planted_evaluable : "n/a"}`, "Every planted bot, wash-trading address and whale was flagged by KMeans (recall 1.00)."],
+  ["good", "Sketches stay within their bounds", `Count-Min: ${(cms.fraction_within_bound * 100).toFixed(0)}% of counts within ε·N. HyperLogLog: ${(hll.rel_error * 100).toFixed(2)}% error on ${int(hll.exact)} senders.`],
+  ["good", "Real report rows verify on Sepolia", "A row from the 31 January report verifies true; the same row with one digit changed verifies false."],
+  ["good", "Publish gas is flat", `About ${compact(CH.gas_vs_rows[1].gas_used)} gas for 1,000 or 1,000,000 rows, because only the root is stored.`],
+  ["good", `Combiner and Spark effects measured`, `Shuffle cut by ${Math.round(shuffleCut * 100)}%; Spark ${speedup.toFixed(2)}× faster than MapReduce on the same input.`],
+  ["warn", "Gas prediction does not beat the baseline", `On real data the regression's RMSE is ${dec(PRED.rmse, 2)} gwei against ${dec(PRED.baseline_rmse, 2)} for "same as this hour". Gas moves close to a random walk hour to hour.`],
+  ["warn", "Clusters are only weakly separated", `Silhouette stays between ${dec(Math.min(...K.k_results.map((d) => d.silhouette)), 2)} and ${dec(Math.max(...K.k_results.map((d) => d.silhouette)), 2)} for every k, so the chosen k = ${K.best_k} is not sharply better. Distance-based flags still mark clear outliers.`],
+];
+$("#checklist").innerHTML = checks.map(([s, what, why]) => `<li><span class="pill ${s}">${s === "good" ? "✓ Passed" : "! Limitation"}</span><div><div class="what">${esc(what)}</div><div class="why">${esc(why)}</div></div></li>`).join("");
+
+/* redraw canvas/SVG colors when the theme changes */
+const rerender = () => redrawers.forEach((f) => f());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</html>
